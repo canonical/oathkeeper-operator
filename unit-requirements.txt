@@ -1,0 +1,6 @@
+pytest
+pytest-mock
+coverage[toml]
+requests
+ipdb
+-r requirements.txt
