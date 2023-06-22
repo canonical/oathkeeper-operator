@@ -1,0 +1,61 @@
+log:
+  level: info
+  format: json
+
+serve:
+  api:
+    cors:
+      enabled: true
+      allowed_origins:
+        - "*"
+
+errors:
+  fallback:
+    - json
+
+  handlers:
+    redirect:
+      enabled: true
+      config:
+        to: {{ kratos_login_url }}
+        when:
+          - error:
+              - unauthorized
+              - forbidden
+            request:
+              header:
+                accept:
+                  - text/html
+    json:
+      enabled: true
+
+access_rules:
+  matching_strategy: regexp
+  repositories:
+    - file:///etc/config/oathkeeper/access-rules.yaml
+
+authenticators:
+  noop:
+    enabled: true
+  cookie_session:
+    enabled: true
+    config:
+      check_session_url: {{ kratos_session_url | d("http://default-kratos-url/sessions/whoami", true) }}
+      preserve_path: true
+      extra_from: "@this"
+      subject_from: "identity.id"
+      only:
+        - ory_kratos_session
+
+authorizers:
+  allow:
+    enabled: true
+
+mutators:
+  noop:
+    enabled: true
+  header:
+    enabled: true
+    config:
+      headers:
+        X-User: {% raw %}"{{ print .Subject }}"{% endraw %}
