@@ -34,6 +34,10 @@ jobs:
           juju-channel: 3.1
           bootstrap-options: '--agent-version=3.1.0'
 
+      # Workaround for https://github.com/canonical/charmcraft/issues/907
+      - name: Run charmcraft clean
+        run: charmcraft clean
+
       - name: Run integration tests
         # set a predictable model name so it can be consumed by charm-logdump-action
         run: tox -e integration -- --model testing
