@@ -144,7 +144,9 @@ class OathkeeperCharm(CharmBase):
             self._container.start(self._container_name)
         except ChangeError as err:
             logger.error(str(err))
-            self.unit.status = BlockedStatus("Failed to start the container, please consult the logs")
+            self.unit.status = BlockedStatus(
+                "Failed to start the container, please consult the logs"
+            )
             return
 
         self.unit.status = ActiveStatus()
