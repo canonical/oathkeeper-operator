@@ -15,7 +15,7 @@ from charms.traefik_k8s.v1.ingress import (
     IngressPerAppRevokedEvent,
 )
 from jinja2 import Template
-from ops.charm import CharmBase, HookEvent, PebbleReadyEvent
+from ops.charm import CharmBase, PebbleReadyEvent
 from ops.main import main
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, ModelError, WaitingStatus
 from ops.pebble import ChangeError, Layer
@@ -115,7 +115,8 @@ class OathkeeperCharm(CharmBase):
         )
         return rendered
 
-    def _handle_status_update_config(self, event: HookEvent) -> None:
+    def _on_oathkeeper_pebble_ready(self, event: PebbleReadyEvent) -> None:
+        """Event Handler for pebble ready event."""
         if not self._container.can_connect():
             event.defer()
             logger.info("Cannot connect to Oathkeeper container. Deferring the event.")
@@ -140,22 +141,13 @@ class OathkeeperCharm(CharmBase):
         )
 
         try:
-            self._container.restart(self._container_name)
+            self._container.start(self._container_name)
         except ChangeError as err:
             logger.error(str(err))
-            self.unit.status = BlockedStatus("Failed to restart, please consult the logs")
+            self.unit.status = BlockedStatus("Failed to start the container, please consult the logs")
             return
 
         self.unit.status = ActiveStatus()
-
-    def _on_oathkeeper_pebble_ready(self, event: PebbleReadyEvent) -> None:
-        """Event Handler for pebble ready event."""
-        if not self._container.can_connect():
-            event.defer()
-            self.unit.status = WaitingStatus("Waiting to connect to Oathkeeper container")
-            return
-
-        self._handle_status_update_config(event)
 
     def _on_ingress_ready(self, event: IngressPerAppReadyEvent) -> None:
         if self.unit.is_leader():
