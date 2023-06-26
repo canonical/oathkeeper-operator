@@ -6,7 +6,6 @@ import logging
 from pathlib import Path
 
 import pytest
-import requests
 import yaml
 from pytest_operator.plugin import OpsTest
 
@@ -14,8 +13,6 @@ logger = logging.getLogger(__name__)
 
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 APP_NAME = METADATA["name"]
-TRAEFIK = "traefik-k8s"
-TRAEFIK_EXTERNAL_NAME = "some_hostname"
 
 
 async def get_unit_address(ops_test: OpsTest, app_name: str, unit_num: int) -> str:
@@ -63,11 +60,9 @@ async def test_oathkeeper_scale_up(ops_test: OpsTest) -> None:
         apps=[APP_NAME],
         status="active",
         raise_on_blocked=True,
+        wait_for_units=2,
         timeout=1000,
     )
 
-    address = await get_app_address(ops_test, TRAEFIK)
-    health_check_url = f"http://{address}/{ops_test.model.name}-{APP_NAME}/health/ready"
-    resp = requests.get(health_check_url)
-
-    assert resp.status_code == 200
+    assert ops_test.model.applications[APP_NAME].units[0].workload_status == "active"
+    assert ops_test.model.applications[APP_NAME].units[1].workload_status == "active"

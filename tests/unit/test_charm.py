@@ -29,6 +29,7 @@ def test_update_container_config(harness: Harness) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
 
     harness.charm.on.oathkeeper_pebble_ready.emit(CONTAINER_NAME)
+    container = harness.model.unit.get_container(CONTAINER_NAME)
 
     expected_config = {
         "log": {
@@ -106,7 +107,8 @@ def test_update_container_config(harness: Harness) -> None:
         },
     }
 
-    assert yaml.safe_load(harness.charm._render_conf_file()) == expected_config
+    container_config = container.pull(path="/etc/config/oathkeeper.yaml", encoding="utf-8")
+    assert yaml.safe_load(container_config.read()) == expected_config
 
 
 def test_on_pebble_ready_correct_plan(harness: Harness) -> None:
