@@ -53,32 +53,6 @@ async def test_build_and_deploy(ops_test: OpsTest) -> None:
         assert ops_test.model.applications[APP_NAME].units[0].workload_status == "active"
 
 
-async def test_ingress_relation(ops_test: OpsTest) -> None:
-    await ops_test.model.deploy(
-        TRAEFIK,
-        application_name=TRAEFIK,
-        channel="latest/edge",
-        config={"external_hostname": TRAEFIK_EXTERNAL_NAME},
-    )
-    await ops_test.model.add_relation(f"{APP_NAME}:ingress", TRAEFIK)
-
-    await ops_test.model.wait_for_idle(
-        apps=[TRAEFIK],
-        status="active",
-        raise_on_blocked=True,
-        timeout=1000,
-    )
-
-
-async def test_has_ingress(ops_test: OpsTest) -> None:
-    # Get the traefik address and try to reach oathkeeper
-    public_address = await get_unit_address(ops_test, TRAEFIK, 0)
-
-    resp = requests.get(f"http://{public_address}/{ops_test.model.name}-{APP_NAME}/rules")
-
-    assert resp.status_code == 200
-
-
 async def test_oathkeeper_scale_up(ops_test: OpsTest) -> None:
     """Check that oathkeeper works after it is scaled up."""
     app = ops_test.model.applications[APP_NAME]

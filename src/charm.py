@@ -9,11 +9,6 @@
 import logging
 
 from charms.observability_libs.v0.kubernetes_service_patch import KubernetesServicePatch
-from charms.traefik_k8s.v1.ingress import (
-    IngressPerAppReadyEvent,
-    IngressPerAppRequirer,
-    IngressPerAppRevokedEvent,
-)
 from jinja2 import Template
 from ops.charm import CharmBase, PebbleReadyEvent
 from ops.main import main
@@ -48,17 +43,7 @@ class OathkeeperCharm(CharmBase):
             self, [("oathkeeper-api", OATHKEEPER_API_PORT)]
         )
 
-        self.ingress = IngressPerAppRequirer(
-            self,
-            relation_name="ingress",
-            port=OATHKEEPER_API_PORT,
-            strip_prefix=True,
-        )
-
         self.framework.observe(self.on.oathkeeper_pebble_ready, self._on_oathkeeper_pebble_ready)
-
-        self.framework.observe(self.ingress.on.ready, self._on_ingress_ready)
-        self.framework.observe(self.ingress.on.revoked, self._on_ingress_revoked)
 
     @property
     def _oathkeeper_layer(self) -> Layer:
@@ -152,14 +137,6 @@ class OathkeeperCharm(CharmBase):
             return
 
         self.unit.status = ActiveStatus()
-
-    def _on_ingress_ready(self, event: IngressPerAppReadyEvent) -> None:
-        if self.unit.is_leader():
-            logger.info(f"This app's ingress URL: {event.url}")
-
-    def _on_ingress_revoked(self, event: IngressPerAppRevokedEvent) -> None:
-        if self.unit.is_leader():
-            logger.info("This app no longer has ingress")
 
 
 if __name__ == "__main__":

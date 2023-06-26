@@ -1,28 +1,12 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-import json
-from typing import Tuple
 
 import yaml
 from ops.model import ActiveStatus, WaitingStatus
 from ops.testing import Harness
 
 CONTAINER_NAME = "oathkeeper"
-
-
-def setup_ingress_relation(harness: Harness) -> Tuple[int, str]:
-    """Set up ingress relation."""
-    harness.set_leader(True)
-    relation_id = harness.add_relation("ingress", "traefik")
-    harness.add_relation_unit(relation_id, "traefik/0")
-    url = f"http://ingress:80/{harness.model.name}-oathkeeper"
-    harness.update_relation_data(
-        relation_id,
-        "traefik",
-        {"ingress": json.dumps({"url": url})},
-    )
-    return relation_id, url
 
 
 def test_pebble_container_can_connect(harness: Harness) -> None:
@@ -142,19 +126,3 @@ def test_on_pebble_ready_correct_plan(harness: Harness) -> None:
     }
     updated_plan = harness.get_container_pebble_plan(CONTAINER_NAME).to_dict()
     assert expected_plan == updated_plan
-
-
-def test_ingress_relation_created(harness: Harness, mocked_fqdn) -> None:
-    harness.set_can_connect(CONTAINER_NAME, True)
-
-    relation_id, url = setup_ingress_relation(harness)
-    assert url == "http://ingress:80/testing-oathkeeper"
-
-    app_data = harness.get_relation_data(relation_id, harness.charm.app)
-    assert app_data == {
-        "host": mocked_fqdn.return_value,
-        "model": harness.model.name,
-        "name": "oathkeeper",
-        "port": "4456",
-        "strip-prefix": "true",
-    }
