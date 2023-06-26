@@ -37,6 +37,13 @@ class OathkeeperCharm(CharmBase):
         self._oathkeeper_access_rules_path = "/etc/config/oathkeeper/access-rules.yaml"
         self._name = self.model.app.name
 
+        self._kratos_login_url = (
+            f"http://kratos.{self.model.name}.svc.cluster.local:4433/self-service/login/browser"
+        )
+        self._kratos_session_url = (
+            f"http://kratos.{self.model.name}.svc.cluster.local:4433/sessions/whoami"
+        )
+
         self.service_patcher = KubernetesServicePatch(
             self, [("oathkeeper-api", OATHKEEPER_API_PORT)]
         )
@@ -88,11 +95,6 @@ class OathkeeperCharm(CharmBase):
             return False
         return True
 
-    @property
-    def _kratos_login_url(self) -> str:
-        # This URL is a placeholder, it will be replaced by a juju integration
-        return f"http://kratos.{self.model.name}.svc.cluster.local:4433/self-service/login/browser"
-
     def _render_access_rules_file(self) -> str:
         """Render the access rules file."""
         with open("templates/access-rules.yaml.j2", "r") as file:
@@ -110,7 +112,7 @@ class OathkeeperCharm(CharmBase):
             template = Template(file.read())
 
         rendered = template.render(
-            kratos_session_url=f"http://kratos.{self.model.name}.svc.cluster.local:4433/sessions/whoami",
+            kratos_session_url=self._kratos_session_url,
             kratos_login_url=self._kratos_login_url,
         )
         return rendered
@@ -123,13 +125,13 @@ class OathkeeperCharm(CharmBase):
             self.unit.status = WaitingStatus("Waiting to connect to Oathkeeper container")
             return
 
-        self.unit.status = MaintenanceStatus("Configuring resources")
+        self.unit.status = MaintenanceStatus("Configuring the container")
 
         self._container.add_layer(self._container_name, self._oathkeeper_layer, combine=True)
 
         if not self._oathkeeper_service_is_created:
             event.defer()
-            self.unit.status = WaitingStatus("Waiting for Oathkeeper service")
+            self.unit.status = WaitingStatus("Waiting for Oathkeeper service to be created")
             logger.info("Oathkeeper service is absent. Deferring the event.")
             return
 
