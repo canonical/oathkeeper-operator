@@ -129,11 +129,11 @@ class OathkeeperCharm(CharmBase):
         )
 
         try:
-            self._container.start(self._container_name)
+            self._container.restart(self._container_name)
         except ChangeError as err:
             logger.error(str(err))
             self.unit.status = BlockedStatus(
-                "Failed to start the container, please consult the logs"
+                "Failed to restart the container, please consult the logs"
             )
             return
 
