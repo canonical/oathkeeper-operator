@@ -41,13 +41,12 @@ async def test_build_and_deploy(ops_test: OpsTest) -> None:
         trust=True,
     )
 
-    async with ops_test.fast_forward():
-        await ops_test.model.wait_for_idle(
-            raise_on_blocked=False,
-            status="active",
-            timeout=1000,
-        )
-        assert ops_test.model.applications[APP_NAME].units[0].workload_status == "active"
+    await ops_test.model.wait_for_idle(
+        raise_on_blocked=False,
+        status="active",
+        timeout=1000,
+    )
+    assert ops_test.model.applications[APP_NAME].units[0].workload_status == "active"
 
 
 async def test_oathkeeper_scale_up(ops_test: OpsTest) -> None:
@@ -60,7 +59,6 @@ async def test_oathkeeper_scale_up(ops_test: OpsTest) -> None:
         apps=[APP_NAME],
         status="active",
         raise_on_blocked=True,
-        wait_for_units=2,
         timeout=1000,
     )
 

@@ -7,6 +7,7 @@ from ops.model import ActiveStatus, WaitingStatus
 from ops.testing import Harness
 
 CONTAINER_NAME = "oathkeeper"
+SERVICE_NAME = "oathkeeper"
 
 
 def test_pebble_container_can_connect(harness: Harness) -> None:
@@ -118,7 +119,7 @@ def test_on_pebble_ready_correct_plan(harness: Harness) -> None:
 
     expected_plan = {
         "services": {
-            CONTAINER_NAME: {
+            SERVICE_NAME: {
                 "override": "replace",
                 "summary": "Oathkeeper Operator layer",
                 "startup": "enabled",

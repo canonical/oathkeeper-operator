@@ -27,6 +27,7 @@ class OathkeeperCharm(CharmBase):
         super().__init__(*args)
 
         self._container_name = "oathkeeper"
+        self._service_name = "oathkeeper"
         self._container = self.unit.get_container(self._container_name)
         self._oathkeeper_config_path = "/etc/config/oathkeeper.yaml"
         self._oathkeeper_access_rules_path = "/etc/config/oathkeeper/access-rules.yaml"
@@ -52,7 +53,7 @@ class OathkeeperCharm(CharmBase):
             "summary": "oathkeeper-operator layer",
             "description": "pebble config layer for oathkeeper-operator",
             "services": {
-                self._container_name: {
+                self._service_name: {
                     "override": "replace",
                     "summary": "Oathkeeper Operator layer",
                     "command": f"oathkeeper serve -c {self._oathkeeper_config_path}",
