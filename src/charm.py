@@ -12,7 +12,7 @@ from charms.observability_libs.v0.kubernetes_service_patch import KubernetesServ
 from jinja2 import Template
 from ops.charm import CharmBase, PebbleReadyEvent
 from ops.main import main
-from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, ModelError, WaitingStatus
+from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ChangeError, Layer
 
 logger = logging.getLogger(__name__)
@@ -73,14 +73,6 @@ class OathkeeperCharm(CharmBase):
         }
         return Layer(layer_config)
 
-    @property
-    def _oathkeeper_service_is_created(self) -> bool:
-        try:
-            self._container.get_service(self._container_name)
-        except (ModelError, RuntimeError):
-            return False
-        return True
-
     def _render_access_rules_file(self) -> str:
         """Render the access rules file."""
         with open("templates/access-rules.yaml.j2", "r") as file:
@@ -114,12 +106,6 @@ class OathkeeperCharm(CharmBase):
         self.unit.status = MaintenanceStatus("Configuring the container")
 
         self._container.add_layer(self._container_name, self._oathkeeper_layer, combine=True)
-
-        if not self._oathkeeper_service_is_created:
-            event.defer()
-            self.unit.status = WaitingStatus("Waiting for Oathkeeper service to be created")
-            logger.info("Oathkeeper service is absent. Deferring the event.")
-            return
 
         self._container.push(
             self._oathkeeper_access_rules_path, self._render_access_rules_file(), make_dirs=True
