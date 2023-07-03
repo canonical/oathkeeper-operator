@@ -7,7 +7,12 @@
 """A Juju charm for Ory Oathkeeper."""
 
 import logging
+from typing import Optional
 
+from charms.kratos.v0.kratos_endpoints import (
+    KratosEndpointsRelationDataMissingError,
+    KratosEndpointsRequirer,
+)
 from charms.observability_libs.v0.kubernetes_service_patch import KubernetesServicePatch
 from jinja2 import Template
 from ops.charm import CharmBase, PebbleReadyEvent
@@ -33,15 +38,14 @@ class OathkeeperCharm(CharmBase):
         self._oathkeeper_access_rules_path = "/etc/config/oathkeeper/access-rules.yaml"
         self._name = self.model.app.name
 
-        self._kratos_login_url = (
-            f"http://kratos.{self.model.name}.svc.cluster.local:4433/self-service/login/browser"
-        )
-        self._kratos_session_url = (
-            f"http://kratos.{self.model.name}.svc.cluster.local:4433/sessions/whoami"
-        )
+        self._kratos_relation_name = "kratos-endpoint-info"
 
         self.service_patcher = KubernetesServicePatch(
             self, [("oathkeeper-api", OATHKEEPER_API_PORT)]
+        )
+
+        self.kratos_endpoints = KratosEndpointsRequirer(
+            self, relation_name=self._kratos_relation_name
         )
 
         self.framework.observe(self.on.oathkeeper_pebble_ready, self._on_oathkeeper_pebble_ready)
@@ -79,7 +83,7 @@ class OathkeeperCharm(CharmBase):
             template = Template(file.read())
 
         rendered = template.render(
-            kratos_login_url=self._kratos_login_url,
+            kratos_login_url=self._get_kratos_endpoint_info("login_browser_endpoint"),
             return_to="http://default-url.com",
         )
         return rendered
@@ -90,10 +94,21 @@ class OathkeeperCharm(CharmBase):
             template = Template(file.read())
 
         rendered = template.render(
-            kratos_session_url=self._kratos_session_url,
-            kratos_login_url=self._kratos_login_url,
+            kratos_session_url=self._get_kratos_endpoint_info("sessions_endpoint"),
+            kratos_login_url=self._get_kratos_endpoint_info("login_browser_endpoint"),
         )
         return rendered
+
+    def _get_kratos_endpoint_info(self, key: str) -> Optional[str]:
+        if self.model.relations[self._kratos_relation_name]:
+            try:
+                kratos_endpoints = self.kratos_endpoints.get_kratos_endpoints()
+                return kratos_endpoints[key]
+            except KratosEndpointsRelationDataMissingError:
+                logger.info("No kratos-endpoint-info relation data found")
+                return None
+        logger.info("Kratos relation not found")
+        return None
 
     def _on_oathkeeper_pebble_ready(self, event: PebbleReadyEvent) -> None:
         """Event Handler for pebble ready event."""

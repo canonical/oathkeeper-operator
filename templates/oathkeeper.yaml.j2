@@ -17,7 +17,7 @@ errors:
     redirect:
       enabled: true
       config:
-        to: {{ kratos_login_url }}
+        to: {{ kratos_login_url | d("http://default-kratos-url/self-service/login/browser", true) }}
         when:
           - error:
               - unauthorized

@@ -13,4 +13,4 @@
   errors:
     - handler: redirect
       config:
-        to: {{ kratos_login_url }}?return_to={{ return_to }}
+        to: {{ kratos_login_url | d("http://default-kratos-url/self-service/login/browser", true) }}?return_to={{ return_to }}
