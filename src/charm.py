@@ -100,15 +100,16 @@ class OathkeeperCharm(CharmBase):
         return rendered
 
     def _get_kratos_endpoint_info(self, key: str) -> Optional[str]:
-        if self.model.relations[self._kratos_relation_name]:
-            try:
-                kratos_endpoints = self.kratos_endpoints.get_kratos_endpoints()
-                return kratos_endpoints[key]
-            except KratosEndpointsRelationDataMissingError:
-                logger.info("No kratos-endpoint-info relation data found")
-                return None
-        logger.info("Kratos relation not found")
-        return None
+        if not self.model.relations[self._kratos_relation_name]:
+            logger.info("Kratos relation not found")
+            return
+
+        try:
+            kratos_endpoints = self.kratos_endpoints.get_kratos_endpoints()
+            return kratos_endpoints[key]
+        except KratosEndpointsRelationDataMissingError:
+            logger.info("No kratos-endpoint-info relation data found")
+            return
 
     def _on_oathkeeper_pebble_ready(self, event: PebbleReadyEvent) -> None:
         """Event Handler for pebble ready event."""
