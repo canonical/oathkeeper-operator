@@ -3,6 +3,7 @@
 
 
 import yaml
+from jinja2 import Template
 from ops.model import ActiveStatus, WaitingStatus
 from ops.testing import Harness
 
@@ -48,84 +49,16 @@ def test_update_container_config_without_kratos_relation(harness: Harness) -> No
     harness.charm.on.oathkeeper_pebble_ready.emit(CONTAINER_NAME)
     container = harness.model.unit.get_container(CONTAINER_NAME)
 
-    expected_config = {
-        "log": {
-            "level": "info",
-            "format": "json",
-        },
-        "serve": {
-            "api": {
-                "cors": {
-                    "enabled": True,
-                    "allowed_origins": ["*"],
-                },
-            },
-        },
-        "errors": {
-            "fallback": ["json"],
-            "handlers": {
-                "redirect": {
-                    "enabled": True,
-                    "config": {
-                        "to": "http://default-kratos-url/self-service/login/browser",
-                        "when": [
-                            {
-                                "error": ["unauthorized", "forbidden"],
-                                "request": {
-                                    "header": {
-                                        "accept": ["text/html"],
-                                    },
-                                },
-                            }
-                        ],
-                    },
-                },
-                "json": {
-                    "enabled": True,
-                },
-            },
-        },
-        "access_rules": {
-            "matching_strategy": "regexp",
-            "repositories": ["file:///etc/config/oathkeeper/access-rules.yaml"],
-        },
-        "authenticators": {
-            "noop": {
-                "enabled": True,
-            },
-            "cookie_session": {
-                "enabled": True,
-                "config": {
-                    "check_session_url": "http://default-kratos-url/sessions/whoami",
-                    "preserve_path": True,
-                    "extra_from": "@this",
-                    "subject_from": "identity.id",
-                    "only": ["ory_kratos_session"],
-                },
-            },
-        },
-        "authorizers": {
-            "allow": {
-                "enabled": True,
-            },
-        },
-        "mutators": {
-            "noop": {
-                "enabled": True,
-            },
-            "header": {
-                "enabled": True,
-                "config": {
-                    "headers": {
-                        "X-User": "{{ print .Subject }}",
-                    },
-                },
-            },
-        },
-    }
+    with open("templates/oathkeeper.yaml.j2", "r") as file:
+        template = Template(file.read())
+
+    expected_config = template.render(
+        kratos_session_url=None,
+        kratos_login_url=None,
+    )
 
     container_config = container.pull(path="/etc/config/oathkeeper.yaml", encoding="utf-8")
-    assert yaml.safe_load(container_config.read()) == expected_config
+    assert yaml.safe_load(container_config.read()) == yaml.safe_load(expected_config)
 
 
 def test_update_container_config_with_kratos_relation(harness: Harness) -> None:
@@ -135,88 +68,20 @@ def test_update_container_config_with_kratos_relation(harness: Harness) -> None:
     harness.charm.on.oathkeeper_pebble_ready.emit(CONTAINER_NAME)
     container = harness.model.unit.get_container(CONTAINER_NAME)
 
-    expected_config = {
-        "log": {
-            "level": "info",
-            "format": "json",
-        },
-        "serve": {
-            "api": {
-                "cors": {
-                    "enabled": True,
-                    "allowed_origins": ["*"],
-                },
-            },
-        },
-        "errors": {
-            "fallback": ["json"],
-            "handlers": {
-                "redirect": {
-                    "enabled": True,
-                    "config": {
-                        "to": harness.get_relation_data(kratos_relation_id, "kratos")[
-                            "login_browser_endpoint"
-                        ],
-                        "when": [
-                            {
-                                "error": ["unauthorized", "forbidden"],
-                                "request": {
-                                    "header": {
-                                        "accept": ["text/html"],
-                                    },
-                                },
-                            }
-                        ],
-                    },
-                },
-                "json": {
-                    "enabled": True,
-                },
-            },
-        },
-        "access_rules": {
-            "matching_strategy": "regexp",
-            "repositories": ["file:///etc/config/oathkeeper/access-rules.yaml"],
-        },
-        "authenticators": {
-            "noop": {
-                "enabled": True,
-            },
-            "cookie_session": {
-                "enabled": True,
-                "config": {
-                    "check_session_url": harness.get_relation_data(kratos_relation_id, "kratos")[
-                        "sessions_endpoint"
-                    ],
-                    "preserve_path": True,
-                    "extra_from": "@this",
-                    "subject_from": "identity.id",
-                    "only": ["ory_kratos_session"],
-                },
-            },
-        },
-        "authorizers": {
-            "allow": {
-                "enabled": True,
-            },
-        },
-        "mutators": {
-            "noop": {
-                "enabled": True,
-            },
-            "header": {
-                "enabled": True,
-                "config": {
-                    "headers": {
-                        "X-User": "{{ print .Subject }}",
-                    },
-                },
-            },
-        },
-    }
+    with open("templates/oathkeeper.yaml.j2", "r") as file:
+        template = Template(file.read())
+
+    expected_config = template.render(
+        kratos_session_url=harness.get_relation_data(kratos_relation_id, "kratos")[
+            "sessions_endpoint"
+        ],
+        kratos_login_url=harness.get_relation_data(kratos_relation_id, "kratos")[
+            "login_browser_endpoint"
+        ],
+    )
 
     container_config = container.pull(path="/etc/config/oathkeeper.yaml", encoding="utf-8")
-    assert yaml.safe_load(container_config.read()) == expected_config
+    assert yaml.safe_load(container_config.read()) == yaml.safe_load(expected_config)
 
 
 def test_on_pebble_ready_correct_plan(harness: Harness) -> None:
