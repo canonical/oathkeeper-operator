@@ -41,7 +41,6 @@ class OathkeeperCLI:
         ]
 
         stdout, _ = self._run_cmd(cmd)
-        logger.info(f"Fetched access rules: {stdout}")
         return json.loads(stdout)
 
     def get_rule(self, rule_id: str) -> Dict:
@@ -56,5 +55,4 @@ class OathkeeperCLI:
         ]
 
         stdout, _ = self._run_cmd(cmd)
-        logger.info(f"Fetched access rule by id: {stdout}")
         return json.loads(stdout)
