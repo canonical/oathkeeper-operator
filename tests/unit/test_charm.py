@@ -1,10 +1,13 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
+from unittest.mock import MagicMock
 
+import pytest
 import yaml
 from jinja2 import Template
 from ops.model import ActiveStatus, WaitingStatus
+from ops.pebble import ExecError
 from ops.testing import Harness
 
 CONTAINER_NAME = "oathkeeper"
@@ -101,3 +104,100 @@ def test_on_pebble_ready_correct_plan(harness: Harness) -> None:
     }
     updated_plan = harness.get_container_pebble_plan(CONTAINER_NAME).to_dict()
     assert expected_plan == updated_plan
+
+
+def test_list_rules_action(
+    harness: Harness, mocked_oathkeeper_is_running: MagicMock, mocked_list_rules: MagicMock
+) -> None:
+    event = MagicMock()
+    harness.charm._on_list_rules_action(event)
+
+    expected_output = {"rule-0", "rule-1", "rule-2", "rule-3", "rule-4"}
+    assert set(event.set_results.call_args_list[0][0][0].values()) == expected_output
+
+
+def test_get_rule_action(
+    harness: Harness, mocked_oathkeeper_is_running: MagicMock, mocked_get_rule: MagicMock
+) -> None:
+    rule_id = mocked_get_rule.return_value["id"]
+    event = MagicMock()
+    event.params = {"rule-id": rule_id}
+
+    harness.charm._on_get_rule_action(event)
+
+    expected_output = {
+        "id": "sample-rule:protected",
+        "authenticators": [{"handler": "cookie_session"}],
+        "authorizer": {"handler": "allow"},
+        "match": {"methods": ["GET", "POST"], "url": "http://some-url:8080/<.*>"},
+        "mutators": [{"handler": "header"}],
+    }
+
+    event.set_results.assert_called_with(expected_output)
+
+
+def test_generic_error_on_get_rule_action(
+    harness: Harness, mocked_oathkeeper_is_running: MagicMock, mocked_get_rule: MagicMock
+) -> None:
+    event = MagicMock()
+    mocked_get_rule.side_effect = ExecError(
+        command=["oathkeeper", "get", "rule"],
+        exit_code=1,
+        stdout="",
+        stderr="Error",
+    )
+
+    harness.charm._on_get_rule_action(event)
+
+    event.fail.assert_called()
+
+
+def test_generic_error_on_list_rules_action(
+    harness: Harness, mocked_oathkeeper_is_running: MagicMock, mocked_list_rules: MagicMock
+) -> None:
+    event = MagicMock()
+    mocked_list_rules.side_effect = ExecError(
+        command=["oathkeeper", "list", "rules"],
+        exit_code=1,
+        stdout="",
+        stderr="Error",
+    )
+
+    harness.charm._on_list_rules_action(event)
+
+    event.fail.assert_called()
+
+
+def test_rule_not_found_on_get_rule_action(
+    harness: Harness, mocked_oathkeeper_is_running: MagicMock, mocked_get_rule: MagicMock
+) -> None:
+    event = MagicMock()
+    event.params = {"rule-id": "unexisting_rule_id"}
+    mocked_get_rule.side_effect = ExecError(
+        command=["oathkeeper", "get", "rule", event.params, "--endpoint", "http://localhost:4456"],
+        exit_code=1,
+        stdout="",
+        stderr="Could not get rule",
+    )
+
+    harness.charm._on_get_rule_action(event)
+
+    event.fail.assert_called_with("Rule not found")
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        "_on_get_rule_action",
+        "_on_list_rules_action",
+    ],
+)
+def test_actions_when_cannot_connect(harness: Harness, action: str) -> None:
+    harness.set_can_connect(CONTAINER_NAME, False)
+    event = MagicMock()
+
+    getattr(harness.charm, action)(event)
+
+    event.fail.assert_called_with(
+        "Service is not ready. Please re-run the action when the charm is active"
+    )

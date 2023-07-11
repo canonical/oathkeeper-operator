@@ -64,3 +64,16 @@ async def test_oathkeeper_scale_up(ops_test: OpsTest) -> None:
 
     assert ops_test.model.applications[APP_NAME].units[0].workload_status == "active"
     assert ops_test.model.applications[APP_NAME].units[1].workload_status == "active"
+
+
+async def test_list_rules(ops_test: OpsTest) -> None:
+    action = (
+        await ops_test.model.applications[APP_NAME]
+        .units[0]
+        .run_action(
+            "list-rules",
+        )
+    )
+    res = (await action.wait()).results
+
+    assert len(res) > 0

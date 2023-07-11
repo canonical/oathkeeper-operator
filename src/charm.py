@@ -15,10 +15,12 @@ from charms.kratos.v0.kratos_endpoints import (
 )
 from charms.observability_libs.v0.kubernetes_service_patch import KubernetesServicePatch
 from jinja2 import Template
-from ops.charm import CharmBase, PebbleReadyEvent
+from ops.charm import ActionEvent, CharmBase, PebbleReadyEvent
 from ops.main import main
-from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
-from ops.pebble import ChangeError, Layer
+from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, ModelError, WaitingStatus
+from ops.pebble import ChangeError, Error, ExecError, Layer
+
+from oathkeeper_cli import OathkeeperCLI
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +50,15 @@ class OathkeeperCharm(CharmBase):
             self, relation_name=self._kratos_relation_name
         )
 
+        self._oathkeeper_cli = OathkeeperCLI(
+            f"http://localhost:{OATHKEEPER_API_PORT}",
+            self._container,
+        )
+
         self.framework.observe(self.on.oathkeeper_pebble_ready, self._on_oathkeeper_pebble_ready)
+
+        self.framework.observe(self.on.list_rules_action, self._on_list_rules_action)
+        self.framework.observe(self.on.get_rule_action, self._on_get_rule_action)
 
     @property
     def _oathkeeper_layer(self) -> Layer:
@@ -76,6 +86,17 @@ class OathkeeperCharm(CharmBase):
             },
         }
         return Layer(layer_config)
+
+    @property
+    def _oathkeeper_service_is_running(self) -> bool:
+        if not self._container.can_connect():
+            return False
+
+        try:
+            service = self._container.get_service(self._service_name)
+        except (ModelError, RuntimeError):
+            return False
+        return service.is_running()
 
     def _render_access_rules_file(self) -> str:
         """Render the access rules file."""
@@ -140,6 +161,46 @@ class OathkeeperCharm(CharmBase):
             return
 
         self.unit.status = ActiveStatus()
+
+    def _on_list_rules_action(self, event: ActionEvent) -> None:
+        if not self._oathkeeper_service_is_running:
+            event.fail("Service is not ready. Please re-run the action when the charm is active")
+            return
+
+        limit = event.params["limit"]
+        event.log("Fetching access rules")
+        try:
+            rules = self._oathkeeper_cli.list_rules(limit)
+        except Error as e:
+            event.fail(f"Something went wrong when trying to run the command: {e}")
+            return
+
+        event.log("Successfully listed rules")
+        event.set_results({str(i): r["id"] for i, r in list(enumerate(rules))})
+
+    def _on_get_rule_action(self, event: ActionEvent) -> None:
+        if not self._oathkeeper_service_is_running:
+            event.fail("Service is not ready. Please re-run the action when the charm is active")
+            return
+
+        rule_id = event.params["rule-id"]
+        event.log(f"Getting rule: {rule_id}")
+
+        try:
+            rule = self._oathkeeper_cli.get_rule(rule_id)
+        except ExecError as err:
+            if err.stderr and "Could not get rule" in err.stderr:
+                event.log(f"No such rule: {rule_id}")
+                event.fail("Rule not found")
+                return
+            event.fail(f"Exited with code: {err.exit_code}. Stderr: {err.stderr}")
+            return
+        except Error as e:
+            event.fail(f"Something went wrong when trying to run the command: {e}")
+            return
+
+        event.log(f"Successfully fetched rule: {rule_id}")
+        event.set_results(rule)
 
 
 if __name__ == "__main__":
