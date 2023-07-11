@@ -18,5 +18,6 @@ resources:
     description: OCI image for oathkeeper container
     upstream-source: ghcr.io/canonical/oathkeeper:0.40.3
 requires:
-  ingress:
-    interface: ingress
+  kratos-endpoint-info:
+    interface: kratos_endpoints
+    limit: 1
