@@ -37,7 +37,7 @@ class OathkeeperCLI:
             "--endpoint",
             self.oathkeeper_api_url,
             "--limit",
-            limit,
+            str(limit),
         ]
 
         stdout, _ = self._run_cmd(cmd)

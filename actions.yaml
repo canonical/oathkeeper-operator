@@ -3,8 +3,9 @@ list-rules:
   params:
     limit:
       description: The maximum amount of returned access rules
-      type: int
+      type: integer
       default: 20
+      minimum: 1
 get-rule:
   description: Get access rule content
   params:
