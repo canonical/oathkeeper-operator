@@ -1,20 +1,3 @@
-- id: "zinc-k8s-svc:protected"
-  match:
-    url: "http://zinc-k8s-0.zinc-k8s-endpoints.test-bundle.svc.cluster.local:4080/<.*>"
-    methods:
-      - GET
-      - POST
-  authenticators:
-    - handler: cookie_session
-  mutators:
-    - handler: header
-  authorizer:
-    handler: allow
-  errors:
-    - handler: redirect
-      config:
-        to: http://10.64.140.44/test-bundle-kratos/self-service/login/browser/self-service/login/browser?return_to=http://10.64.140.44:80/test-bundle-zinc-k8s/version
-
 - id: "zinc-k8s:protected"
   match:
     url: "http://10.64.140.44/test-bundle-zinc-k8s/<.*>"
@@ -31,3 +14,19 @@
     - handler: redirect
       config:
         to: http://10.64.140.44/test-bundle-kratos/self-service/login/browser/self-service/login/browser?return_to=http://10.64.140.44:80/test-bundle-zinc-k8s/version
+- id: "zinc-k8s-other-address:protected"
+  match:
+    url: "http://10.64.140.43/test-bundle-zinc-k8s/<.*>"
+    methods:
+      - GET
+      - POST
+  authenticators:
+    - handler: cookie_session
+  mutators:
+    - handler: header
+  authorizer:
+    handler: allow
+  errors:
+    - handler: redirect
+      config:
+        to: http://10.64.140.43/test-bundle-kratos/self-service/login/browser/self-service/login/browser?return_to=http://10.64.140.43:80/test-bundle-zinc-k8s/version
