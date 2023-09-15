@@ -1,5 +1,5 @@
 log:
-  level: info
+  level: debug
   format: json
 
 serve:
@@ -17,7 +17,7 @@ errors:
     redirect:
       enabled: true
       config:
-        to: {{ kratos_login_url | d("http://default-kratos-url/self-service/login/browser", true) }}
+        to: http://10.64.140.44/test-bundle-kratos/self-service/login/browser?return_to=http://10.64.140.44:80/test-bundle-zinc-k8s/version
         when:
           - error:
               - unauthorized
@@ -28,6 +28,8 @@ errors:
                   - text/html
     json:
       enabled: true
+      config:
+        verbose: true
 
 access_rules:
   matching_strategy: regexp
