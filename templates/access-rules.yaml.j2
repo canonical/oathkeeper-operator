@@ -1,6 +1,34 @@
+- id: "oathkeeper-api44:allow"
+  match:
+    url: "https://10.64.140.44/test-bundle-oathkeeper/<.*>"
+    methods:
+      - GET
+      - POST
+  authenticators:
+    - handler: noop
+  mutators:
+    - handler: noop
+  authorizer:
+    handler: allow
+  errors:
+    - handler: json
+- id: "oathkeeper-api43:allow"
+  match:
+    url: "https://10.64.140.43/test-bundle-oathkeeper/<.*>"
+    methods:
+      - GET
+      - POST
+  authenticators:
+    - handler: noop
+  mutators:
+    - handler: noop
+  authorizer:
+    handler: allow
+  errors:
+    - handler: json
 - id: "zinc-k8s:protected"
   match:
-    url: "http://10.64.140.44/test-bundle-zinc-k8s/<.*>"
+    url: "https://10.64.140.44/test-bundle-zinc-k8s/<.*>"
     methods:
       - GET
       - POST
@@ -13,10 +41,10 @@
   errors:
     - handler: redirect
       config:
-        to: https://10.64.140.44/test-bundle-kratos/self-service/login/browser?return_to=https://10.64.140.44:443/test-bundle-zinc-k8s/version
+        to: http://10.64.140.44/test-bundle-kratos/self-service/login/browser?return_to=https://10.64.140.44:443/test-bundle-zinc-k8s/version
 - id: "zinc-k8s-other-address:protected"
   match:
-    url: "http://10.64.140.43/test-bundle-zinc-k8s/<.*>"
+    url: "https://10.64.140.43/test-bundle-zinc-k8s/<.*>"
     methods:
       - GET
       - POST
@@ -29,4 +57,4 @@
   errors:
     - handler: redirect
       config:
-        to: https://10.64.140.43/test-bundle-kratos/self-service/login/browser?return_to=https://10.64.140.43:443/test-bundle-zinc-k8s/version
+        to: http://10.64.140.43/test-bundle-kratos/self-service/login/browser?return_to=https://10.64.140.43:443/test-bundle-zinc-k8s/version
