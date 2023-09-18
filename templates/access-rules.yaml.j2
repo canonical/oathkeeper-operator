@@ -41,7 +41,7 @@
   errors:
     - handler: redirect
       config:
-        to: http://10.64.140.44/test-bundle-kratos/self-service/login/browser?return_to=https://10.64.140.44:443/test-bundle-zinc-k8s/version
+        to: https://10.64.140.44/test-bundle-kratos/self-service/login/browser?return_to=https://10.64.140.44:443/test-bundle-zinc-k8s/version
 - id: "zinc-k8s-other-address:protected"
   match:
     url: "https://10.64.140.43/test-bundle-zinc-k8s/<.*>"
@@ -57,4 +57,4 @@
   errors:
     - handler: redirect
       config:
-        to: http://10.64.140.43/test-bundle-kratos/self-service/login/browser?return_to=https://10.64.140.43:443/test-bundle-zinc-k8s/version
+        to: https://10.64.140.43/test-bundle-kratos/self-service/login/browser?return_to=https://10.64.140.43:443/test-bundle-zinc-k8s/version
