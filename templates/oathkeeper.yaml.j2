@@ -17,7 +17,7 @@ errors:
     redirect:
       enabled: true
       config:
-        to: https://10.64.140.44/test-bundle-kratos/self-service/login/browser?return_to=https://10.64.140.44:443/test-bundle-zinc-k8s/version
+        to: {{ kratos_login_url | d("http://default-kratos-url/self-service/login/browser", true) }}
         when:
           - error:
               - unauthorized
@@ -42,7 +42,7 @@ authenticators:
   cookie_session:
     enabled: true
     config:
-      check_session_url: "http://kratos-0.kratos-endpoints.test-bundle.svc.cluster.local:4433/sessions/whoami"
+      check_session_url: {{ kratos_session_url | d("http://default-kratos-url/sessions/whoami", true) }}
       preserve_path: true
       extra_from: "@this"
       subject_from: "identity.id"
