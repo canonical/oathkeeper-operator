@@ -18,6 +18,7 @@ errors:
       enabled: true
       config:
         to: {{ kratos_login_url | d("http://default-kratos-url/self-service/login/browser", true) }}
+        return_to_query_param: return_to
         when:
           - error:
               - unauthorized
