@@ -15,7 +15,7 @@ from charms.kratos.v0.kratos_endpoints import (
 )
 from charms.observability_libs.v0.kubernetes_service_patch import KubernetesServicePatch
 from jinja2 import Template
-from ops.charm import ActionEvent, CharmBase, PebbleReadyEvent
+from ops.charm import ActionEvent, CharmBase, HookEvent, PebbleReadyEvent, RelationChangedEvent
 from ops.main import main
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, ModelError, WaitingStatus
 from ops.pebble import ChangeError, Error, ExecError, Layer
@@ -59,6 +59,10 @@ class OathkeeperCharm(CharmBase):
 
         self.framework.observe(self.on.list_rules_action, self._on_list_rules_action)
         self.framework.observe(self.on.get_rule_action, self._on_get_rule_action)
+
+        self.framework.observe(
+            self.on[self._kratos_relation_name].relation_changed, self._on_kratos_relation_changed
+        )
 
     @property
     def _oathkeeper_layer(self) -> Layer:
@@ -134,6 +138,13 @@ class OathkeeperCharm(CharmBase):
 
     def _on_oathkeeper_pebble_ready(self, event: PebbleReadyEvent) -> None:
         """Event Handler for pebble ready event."""
+        self._handle_status_update_config(event)
+
+    def _on_kratos_relation_changed(self, event: RelationChangedEvent) -> None:
+        self._handle_status_update_config(event)
+
+    def _handle_status_update_config(self, event: HookEvent) -> None:
+        """Handle unit status, update access rules and config file."""
         if not self._container.can_connect():
             event.defer()
             logger.info("Cannot connect to Oathkeeper container. Deferring the event.")
