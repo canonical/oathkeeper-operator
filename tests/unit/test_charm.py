@@ -66,8 +66,6 @@ def test_update_container_config_without_kratos_relation(harness: Harness) -> No
 
 def test_update_container_config_with_kratos_relation(harness: Harness) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
-    harness.charm.on.oathkeeper_pebble_ready.emit(CONTAINER_NAME)
-
     kratos_relation_id = setup_kratos_relation(harness)
 
     container = harness.model.unit.get_container(CONTAINER_NAME)
