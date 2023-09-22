@@ -11,12 +11,14 @@ serve:
 
 errors:
   fallback:
+    - www_authenticate
     - json
 
   handlers:
     redirect:
       enabled: true
       config:
+        # this should be https
         to: {{ kratos_login_url | d("http://default-kratos-url/self-service/login/browser", true) }}
         return_to_query_param: return_to
         when:
@@ -27,6 +29,14 @@ errors:
               header:
                 accept:
                   - text/html
+    www_authenticate:
+      enabled: true
+      config:
+        realm: unauthorized
+        when:
+          - error:
+              - not_found
+              - internal_server_error
     json:
       enabled: true
       config:
@@ -43,6 +53,7 @@ authenticators:
   cookie_session:
     enabled: true
     config:
+      # this should be the internal address
       check_session_url: {{ kratos_session_url | d("http://default-kratos-url/sessions/whoami", true) }}
       preserve_path: true
       extra_from: "@this"
