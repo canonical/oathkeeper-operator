@@ -13,6 +13,7 @@ from charms.kratos.v0.kratos_endpoints import (
     KratosEndpointsRelationDataMissingError,
     KratosEndpointsRequirer,
 )
+from charms.oathkeeper.v0.auth_proxy import AuthProxyConfigRemovedEvent, AuthProxyProvider
 from charms.observability_libs.v0.kubernetes_service_patch import KubernetesServicePatch
 from jinja2 import Template
 from ops.charm import ActionEvent, CharmBase, HookEvent, PebbleReadyEvent, RelationChangedEvent
@@ -42,6 +43,8 @@ class OathkeeperCharm(CharmBase):
 
         self._kratos_relation_name = "kratos-endpoint-info"
 
+        self.auth_proxy = AuthProxyProvider(self)
+
         self.service_patcher = KubernetesServicePatch(
             self, [("oathkeeper-api", OATHKEEPER_API_PORT)]
         )
@@ -56,6 +59,13 @@ class OathkeeperCharm(CharmBase):
         )
 
         self.framework.observe(self.on.oathkeeper_pebble_ready, self._on_oathkeeper_pebble_ready)
+
+        self.framework.observe(
+            self.auth_proxy.on.config_changed, self._configure_auth_proxy_provider
+        )
+        self.framework.observe(
+            self.auth_proxy.on.config_removed, self._remove_auth_proxy_configuration
+        )
 
         self.framework.observe(self.on.list_rules_action, self._on_list_rules_action)
         self.framework.observe(self.on.get_rule_action, self._on_get_rule_action)
@@ -212,6 +222,14 @@ class OathkeeperCharm(CharmBase):
 
         event.log(f"Successfully fetched rule: {rule_id}")
         event.set_results(rule)
+
+    def _configure_auth_proxy_provider(self, event: HookEvent) -> None:
+        """Create access rules and update config."""
+        pass
+
+    def _remove_auth_proxy_configuration(self, event: AuthProxyConfigRemovedEvent) -> None:
+        """Remove the auth-proxy-related config for a given relation."""
+        pass
 
 
 if __name__ == "__main__":
