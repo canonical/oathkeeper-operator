@@ -6,6 +6,7 @@
 
 """A Juju charm for Ory Oathkeeper."""
 
+import itertools
 import json
 import logging
 from typing import Dict, List, Optional
@@ -55,8 +56,9 @@ class OathkeeperCharm(CharmBase):
         self._name = self.model.app.name
 
         self._kratos_relation_name = "kratos-endpoint-info"
+        self._auth_proxy_relation_name = "auth-proxy"
 
-        self.auth_proxy = AuthProxyProvider(self)
+        self.auth_proxy = AuthProxyProvider(self, relation_name=self._auth_proxy_relation_name)
 
         self.service_patcher = KubernetesServicePatch(
             self, [("oathkeeper-api", OATHKEEPER_API_PORT)]
@@ -145,6 +147,13 @@ class OathkeeperCharm(CharmBase):
         )
         return rendered
 
+    def _push_oathkeeper_config(self) -> None:
+        self._container.push(
+            self._oathkeeper_config_path,
+            self._render_conf_file(self._get_all_access_rules_locations()),
+            make_dirs=True,
+        )
+
     def _get_kratos_endpoint_info(self, key: str) -> Optional[str]:
         if not self.model.relations[self._kratos_relation_name]:
             logger.info("Kratos relation not found")
@@ -216,9 +225,7 @@ class OathkeeperCharm(CharmBase):
 
         self._container.add_layer(self._container_name, self._oathkeeper_layer, combine=True)
 
-        self._container.push(
-            self._oathkeeper_config_path, self._render_conf_file(), make_dirs=True
-        )
+        self._push_oathkeeper_config()
 
         try:
             self._container.restart(self._container_name)
@@ -301,8 +308,7 @@ class OathkeeperCharm(CharmBase):
             event.relation_id, dict(access_rules_locations=access_rules_locations)
         )
 
-        # TODO: Render with all relations' locations
-        self._update_oathkeeper_config_with_access_rules_locations(access_rules_locations)
+        self._push_oathkeeper_config()
 
     def _rule_template(
         self, rule_id: str, url: str, authenticator: str, mutator: str, error_handler: str
@@ -322,7 +328,7 @@ class OathkeeperCharm(CharmBase):
         protected_urls: List[str],
         allowed_endpoints: List[str],
         relation_app_name: str,
-    ) -> Optional[List[dict]]:
+    ) -> Optional[List[Dict]]:
         """Render access rules from a template."""
         rules = list()
 
@@ -373,14 +379,21 @@ class OathkeeperCharm(CharmBase):
 
         return rules
 
-    def _update_oathkeeper_config_with_access_rules_locations(
-        self, access_rules_files: List[str]
-    ) -> None:
-        self._container.push(
-            self._oathkeeper_config_path,
-            self._render_conf_file(access_rules_files),
-            make_dirs=True,
-        )
+    def _get_all_access_rules_locations(self) -> Optional[List]:
+        if not self.model.relations[self._auth_proxy_relation_name]:
+            logger.info("No auth-proxy relations found")
+            return None
+
+        relation_locations = list()
+        for relation in self.model.relations[self._auth_proxy_relation_name]:
+            peer_data = self._get_auth_proxy_relation_peer_data(relation.id)
+            if peer_data:
+                relation_locations.append(peer_data["access_rules_locations"])
+
+        # Get a consolidated list of locations
+        access_rules_locations = itertools.chain.from_iterable(relation_locations)
+
+        return access_rules_locations
 
     def _remove_auth_proxy_configuration(self, event: AuthProxyConfigRemovedEvent) -> None:
         """Remove the auth-proxy-related config for a given relation."""
@@ -394,11 +407,12 @@ class OathkeeperCharm(CharmBase):
             logger.error("No access rules locations found in peer data")
             return
 
-        # TODO: Remove relation's access rules from config
         for file in peer_data["access_rules_locations"]:
             self._container.remove_path(file)
 
         self._pop_auth_proxy_relation_peer_data(event.relation_id)
+
+        self._push_oathkeeper_config()
 
 
 if __name__ == "__main__":

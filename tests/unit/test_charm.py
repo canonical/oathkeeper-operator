@@ -1,7 +1,7 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-from typing import Tuple
+from typing import Optional, Tuple
 from unittest.mock import MagicMock
 
 import pytest
@@ -39,13 +39,14 @@ def setup_peer_relation(harness: Harness) -> Tuple[int, str]:
     return relation_id, app_name
 
 
-def setup_auth_proxy_relation(harness: Harness) -> Tuple[int, str]:
-    app_name = "requirer"
+def setup_auth_proxy_relation(
+    harness: Harness, app_name: Optional[str] = "requirer"
+) -> Tuple[int, str]:
     relation_id = harness.add_relation("auth-proxy", app_name)
-    harness.add_relation_unit(relation_id, "requirer/0")
+    harness.add_relation_unit(relation_id, f"{app_name}/0")
     harness.update_relation_data(
         relation_id,
-        "requirer",
+        app_name,
         {
             "protected_urls": '["https://example.com"]',
             "allowed_endpoints": '["welcome", "about/app"]',
@@ -286,6 +287,38 @@ def test_config_file_updated_with_access_rules_locations(
     assert yaml.safe_load(container_config.read()) == yaml.safe_load(expected_config)
 
 
+def test_config_file_updated_when_multiple_auth_proxy_relations(
+    harness: Harness,
+    mocked_oathkeeper_is_running: MagicMock,
+) -> None:
+    harness.set_can_connect(CONTAINER_NAME, True)
+    container = harness.model.unit.get_container(CONTAINER_NAME)
+
+    peer_relation_id, _ = setup_peer_relation(harness)
+
+    requirer_relation_id, requirer_app_name = setup_auth_proxy_relation(harness)
+    other_requirer_relation_id, other_requirer_app_name = setup_auth_proxy_relation(
+        harness, app_name="other-requirer"
+    )
+
+    with open("templates/oathkeeper.yaml.j2", "r") as file:
+        template = Template(file.read())
+
+    expected_config = template.render(
+        kratos_session_url=None,
+        kratos_login_url=None,
+        access_rules=[
+            f"{ACCESS_RULES_PATH}/access-rules-{requirer_app_name}-allow.json",
+            f"{ACCESS_RULES_PATH}/access-rules-{requirer_app_name}-deny.json",
+            f"{ACCESS_RULES_PATH}/access-rules-{other_requirer_app_name}-allow.json",
+            f"{ACCESS_RULES_PATH}/access-rules-{other_requirer_app_name}-deny.json",
+        ],
+    )
+
+    container_config = container.pull(path=CONFIG_FILE_PATH, encoding="utf-8")
+    assert yaml.safe_load(container_config.read()) == yaml.safe_load(expected_config)
+
+
 def test_allow_access_rules_rendering(
     harness: Harness,
     mocked_oathkeeper_is_running: MagicMock,
@@ -514,7 +547,8 @@ def test_no_peer_relation_on_auth_proxy_config_removed(
     harness.set_can_connect(CONTAINER_NAME, True)
 
     relation_id, _ = setup_auth_proxy_relation(harness)
-    harness.charm.auth_proxy.on.config_removed.emit(relation_id)
+
+    harness.remove_relation(relation_id)
 
     assert harness.charm.unit.status == WaitingStatus("Waiting for peer relation")
 
@@ -528,7 +562,7 @@ def test_peer_data_pop_on_auth_proxy_config_removed(
     peer_relation_id, _ = setup_peer_relation(harness)
     relation_id, _ = setup_auth_proxy_relation(harness)
 
-    harness.charm.auth_proxy.on.config_removed.emit(relation_id)
+    harness.remove_relation(relation_id)
 
     assert harness.get_relation_data(peer_relation_id, harness.charm.app) == {}
 
@@ -542,7 +576,7 @@ def test_access_rules_files_removed_on_auth_proxy_config_removed(
     peer_relation_id, _ = setup_peer_relation(harness)
     relation_id, app_name = setup_auth_proxy_relation(harness)
 
-    harness.charm.auth_proxy.on.config_removed.emit(relation_id)
+    harness.remove_relation(relation_id)
 
     root_dir = harness.get_filesystem_root(CONTAINER_NAME)
     locations = [
@@ -551,3 +585,27 @@ def test_access_rules_files_removed_on_auth_proxy_config_removed(
     ]
     for location in locations:
         assert not (root_dir / location).exists()
+
+
+def test_peer_data_when_multiple_auth_proxy_relations(
+    harness: Harness,
+    mocked_oathkeeper_is_running: MagicMock,
+) -> None:
+    harness.set_can_connect(CONTAINER_NAME, True)
+    peer_relation_id, _ = setup_peer_relation(harness)
+
+    requirer_relation_id, requirer_app_name = setup_auth_proxy_relation(harness)
+    requirer_auth_proxy_peer_id = f"auth_proxy_{requirer_relation_id}"
+
+    other_requirer_relation_id, other_requirer_app_name = setup_auth_proxy_relation(
+        harness, app_name="other-requirer"
+    )
+    other_requirer_auth_proxy_peer_id = f"auth_proxy_{other_requirer_relation_id}"
+
+    requirer_peer_data = '{"access_rules_locations": ["/etc/config/oathkeeper/access-rules-requirer-allow.json", "/etc/config/oathkeeper/access-rules-requirer-deny.json"]}'
+    other_requirer_peer_data = '{"access_rules_locations": ["/etc/config/oathkeeper/access-rules-other-requirer-allow.json", "/etc/config/oathkeeper/access-rules-other-requirer-deny.json"]}'
+
+    assert harness.get_relation_data(peer_relation_id, harness.charm.app) == {
+        requirer_auth_proxy_peer_id: requirer_peer_data,
+        other_requirer_auth_proxy_peer_id: other_requirer_peer_data,
+    }
