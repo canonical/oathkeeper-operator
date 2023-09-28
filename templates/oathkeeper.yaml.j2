@@ -41,8 +41,12 @@ errors:
 
 access_rules:
   matching_strategy: regexp
+  {%- if access_rules %}
   repositories:
-    - file:///etc/config/oathkeeper/access-rules.yaml
+  {%- for access_rule in access_rules %}
+    - {{ access_rule }}
+  {%- endfor %}
+  {%- endif %}
 
 authenticators:
   noop:

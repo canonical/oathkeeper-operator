@@ -25,3 +25,6 @@ requires:
   kratos-endpoint-info:
     interface: kratos_endpoints
     limit: 1
+peers:
+  oathkeeper:
+    interface: oathkepeer_peers
