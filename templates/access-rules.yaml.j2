@@ -1,6 +1,6 @@
 - id: "oathkeeper-api44:allow"
   match:
-    url: "<https|http>://10.64.140.44/test-bundle-oathkeeper/<.*>"
+    url: "<https|http>://10.64.140.44/iam-bundle-oathkeeper/<.*>"
     methods:
       - GET
       - POST
@@ -14,7 +14,7 @@
     - handler: json
 - id: "oathkeeper-api43:allow"
   match:
-    url: "<https|http>://10.64.140.43/test-bundle-oathkeeper/<.*>"
+    url: "<https|http>://10.64.140.43/iam-bundle-oathkeeper/<.*>"
     methods:
       - GET
       - POST
@@ -26,9 +26,37 @@
     handler: allow
   errors:
     - handler: json
-- id: "zinc-k8s:protected"
+- id: "zinc-k8s43:allow"
   match:
-    url: "<https|http>://10.64.140.44/test-bundle-zinc-k8s/<.*>"
+    url: "<https|http>://10.64.140.43/iam-bundle-zinc-k8s/version"
+    methods:
+      - GET
+      - POST
+  authenticators:
+    - handler: noop
+  mutators:
+    - handler: noop
+  authorizer:
+    handler: allow
+  errors:
+    - handler: json
+- id: "zinc-k8s44:allow"
+  match:
+    url: "<https|http>://10.64.140.44/iam-bundle-zinc-k8s/version"
+    methods:
+      - GET
+      - POST
+  authenticators:
+    - handler: noop
+  mutators:
+    - handler: noop
+  authorizer:
+    handler: allow
+  errors:
+    - handler: json
+- id: "zinc-k8s43:protected"
+  match:
+    url: "<https|http>://10.64.140.44/iam-bundle-zinc-k8s/<(?!version).*>"
     methods:
       - GET
       - POST
@@ -41,11 +69,11 @@
   errors:
     - handler: redirect
       config:
-        to: https://10.64.140.44/test-bundle-kratos/self-service/login/browser
+        to: https://10.64.140.44/iam-bundle-kratos/self-service/login/browser
         return_to_query_param: return_to
-- id: "zinc-k8s-other-address:protected"
+- id: "zinc-k8s44:protected"
   match:
-    url: "<https|http>://10.64.140.43/test-bundle-zinc-k8s/<.*>"
+    url: "<https|http>://10.64.140.43/iam-bundle-zinc-k8s/<(?!version).*>"
     methods:
       - GET
       - POST
@@ -58,5 +86,5 @@
   errors:
     - handler: redirect
       config:
-        to: https://10.64.140.43/test-bundle-kratos/self-service/login/browser
+        to: https://10.64.140.43/iam-bundle-kratos/self-service/login/browser
         return_to_query_param: return_to
