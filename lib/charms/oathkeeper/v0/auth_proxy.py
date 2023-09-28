@@ -225,12 +225,14 @@ class AuthProxyConfigChangedEvent(EventBase):
         headers: List[str],
         allowed_endpoints: List[str],
         relation_id: int,
+        relation_app_name: str,
     ) -> None:
         super().__init__(handle)
         self.protected_urls = protected_urls
         self.allowed_endpoints = allowed_endpoints
         self.headers = headers
         self.relation_id = relation_id
+        self.relation_app_name = relation_app_name
 
     def snapshot(self) -> Dict:
         """Save event."""
@@ -239,6 +241,7 @@ class AuthProxyConfigChangedEvent(EventBase):
             "headers": self.headers,
             "allowed_endpoints": self.allowed_endpoints,
             "relation_id": self.relation_id,
+            "relation_app_name": self.relation_app_name,
         }
 
     def restore(self, snapshot: Dict) -> None:
@@ -247,6 +250,7 @@ class AuthProxyConfigChangedEvent(EventBase):
         self.headers = snapshot["headers"]
         self.allowed_endpoints = snapshot["allowed_endpoints"]
         self.relation_id = snapshot["relation_id"]
+        self.relation_app_name = snapshot["relation_app_name"]
 
     def to_auth_proxy_config(self) -> AuthProxyConfig:
         """Convert the event information to an AuthProxyConfig object."""
@@ -322,9 +326,12 @@ class AuthProxyProvider(AuthProxyRelation):
         headers = auth_proxy_data.get("headers")
 
         relation_id = event.relation.id
+        relation_app_name = event.relation.app.name
 
         # Notify Oathkeeper to create access rules
-        self.on.config_changed.emit(protected_urls, headers, allowed_endpoints, relation_id)
+        self.on.config_changed.emit(
+            protected_urls, headers, allowed_endpoints, relation_id, relation_app_name
+        )
 
     def _on_relation_departed_event(self, event: RelationDepartedEvent) -> None:
         """Notify Oathkeeper that the relation has departed."""
