@@ -44,7 +44,7 @@ access_rules:
   {%- if access_rules %}
   repositories:
   {%- for access_rule in access_rules %}
-    - {{ access_rule }}
+    - file://{{ access_rule }}
   {%- endfor %}
   {%- endif %}
 
