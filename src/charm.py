@@ -308,7 +308,13 @@ class OathkeeperCharm(CharmBase):
             event.relation_id, dict(access_rules_locations=access_rules_locations)
         )
 
-        self._push_oathkeeper_config()
+        try:
+            self._push_oathkeeper_config()
+        except Error as e:
+            logger.error(f"Failed to set new config: {e}")
+            self.unit.status = BlockedStatus("Failed to set new config, see logs")
+            self._pop_auth_proxy_relation_peer_data(event.relation_id)
+            return
 
     def _rule_template(
         self, rule_id: str, url: str, authenticator: str, mutator: str, error_handler: str
