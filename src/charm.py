@@ -315,7 +315,7 @@ class OathkeeperCharm(CharmBase):
     ) -> Dict:
         return {
             "id": rule_id,
-            "match": {"url": url, "methods": ["GET", "POST"]},
+            "match": {"url": url, "methods": ["GET", "POST", "OPTION", "PUT", "PATCH", "DELETE"]},
             "authenticators": [{"handler": authenticator}],
             "mutators": [{"handler": mutator}],
             "authorizer": {"handler": "allow"},
