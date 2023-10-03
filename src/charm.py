@@ -333,9 +333,8 @@ class OathkeeperCharm(CharmBase):
         rules = list()
 
         for url_index, url in enumerate(protected_urls):
-            if url.startswith("https"):
-                # Replace with regex to match both http and https
-                url = url.replace("https", "<https|http>")
+            # Replace with regex to match both http and https
+            url = url.replace("https", "<https|http>")
 
             if rule_type == "allow":
                 if not allowed_endpoints:
