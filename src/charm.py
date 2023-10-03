@@ -135,7 +135,7 @@ class OathkeeperCharm(CharmBase):
     def _kratos_session_url(self) -> Optional[str]:
         return self._get_kratos_endpoint_info("sessions_endpoint")
 
-    def _render_conf_file(self, access_rules_files: Optional[List] = None) -> str:
+    def _render_conf_file(self) -> str:
         """Render the Oathkeeper configuration file."""
         with open("templates/oathkeeper.yaml.j2", "r") as file:
             template = Template(file.read())
@@ -143,14 +143,14 @@ class OathkeeperCharm(CharmBase):
         rendered = template.render(
             kratos_session_url=self._kratos_session_url,
             kratos_login_url=self._kratos_login_url,
-            access_rules=access_rules_files,
+            access_rules=self._get_all_access_rules_locations(),
         )
         return rendered
 
     def _push_oathkeeper_config(self) -> None:
         self._container.push(
             self._oathkeeper_config_path,
-            self._render_conf_file(self._get_all_access_rules_locations()),
+            self._render_conf_file(),
             make_dirs=True,
         )
 
