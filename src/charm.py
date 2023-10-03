@@ -76,7 +76,7 @@ class OathkeeperCharm(CharmBase):
         self.framework.observe(self.on.oathkeeper_pebble_ready, self._on_oathkeeper_pebble_ready)
 
         self.framework.observe(
-            self.auth_proxy.on.config_changed, self._on_auth_proxy_config_changed
+            self.auth_proxy.on.proxy_config_changed, self._on_auth_proxy_config_changed
         )
         self.framework.observe(
             self.auth_proxy.on.config_removed, self._remove_auth_proxy_configuration

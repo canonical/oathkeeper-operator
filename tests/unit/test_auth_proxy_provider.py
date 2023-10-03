@@ -27,7 +27,7 @@ class AuthProxyProviderCharm(CharmBase):
         self.auth_proxy = AuthProxyProvider(self)
         self.events: List = []
 
-        self.framework.observe(self.auth_proxy.on.config_changed, self._record_event)
+        self.framework.observe(self.auth_proxy.on.proxy_config_changed, self._record_event)
         self.framework.observe(self.auth_proxy.on.config_removed, self._record_event)
 
     def _record_event(self, event: EventBase) -> None:

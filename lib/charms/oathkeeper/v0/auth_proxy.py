@@ -284,7 +284,7 @@ class AuthProxyConfigRemovedEvent(EventBase):
 class AuthProxyProviderEvents(ObjectEvents):
     """Event descriptor for events raised by `AuthProxyProvider`."""
 
-    config_changed = EventSource(AuthProxyConfigChangedEvent)
+    proxy_config_changed = EventSource(AuthProxyConfigChangedEvent)
     config_removed = EventSource(AuthProxyConfigRemovedEvent)
 
 
@@ -329,7 +329,7 @@ class AuthProxyProvider(AuthProxyRelation):
         relation_app_name = event.relation.app.name
 
         # Notify Oathkeeper to create access rules
-        self.on.config_changed.emit(
+        self.on.proxy_config_changed.emit(
             protected_urls, headers, allowed_endpoints, relation_id, relation_app_name
         )
 
