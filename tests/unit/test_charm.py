@@ -333,7 +333,7 @@ def test_allow_access_rules_rendering(
         {
             "id": f"{app_name}:welcome:0:allow",
             "match": {
-                "url": "<https|http>://example.com/welcome",
+                "url": "<^(https|http)>://example.com/welcome",
                 "methods": ["GET", "POST", "OPTION", "PUT", "PATCH", "DELETE"],
             },
             "authenticators": [{"handler": "noop"}],
@@ -344,7 +344,7 @@ def test_allow_access_rules_rendering(
         {
             "id": f"{app_name}:about/app:0:allow",
             "match": {
-                "url": "<https|http>://example.com/about/app",
+                "url": "<^(https|http)>://example.com/about/app",
                 "methods": ["GET", "POST", "OPTION", "PUT", "PATCH", "DELETE"],
             },
             "authenticators": [{"handler": "noop"}],
@@ -398,7 +398,7 @@ def test_allow_access_rules_rendering_when_auth_proxy_config_changed(
         {
             "id": f"{app_name}:welcome:0:allow",
             "match": {
-                "url": "<https|http>://example.com/welcome",
+                "url": "<^(https|http)>://example.com/welcome",
                 "methods": ["GET", "POST", "OPTION", "PUT", "PATCH", "DELETE"],
             },
             "authenticators": [{"handler": "noop"}],
@@ -409,7 +409,7 @@ def test_allow_access_rules_rendering_when_auth_proxy_config_changed(
         {
             "id": f"{app_name}:welcome:1:allow",
             "match": {
-                "url": "<https|http>://other-example.com/welcome",
+                "url": "<^(https|http)>://other-example.com/welcome",
                 "methods": ["GET", "POST", "OPTION", "PUT", "PATCH", "DELETE"],
             },
             "authenticators": [{"handler": "noop"}],
@@ -439,7 +439,7 @@ def test_deny_access_rules_rendering_when_single_protected_url_provided(
         {
             "id": f"{app_name}:0:deny",
             "match": {
-                "url": "<https|http>://example.com/<(?!welcome|(about/app)).*>",
+                "url": "<^(https|http)>://example.com/<(?!welcome$|about/app$).*>",
                 "methods": ["GET", "POST", "OPTION", "PUT", "PATCH", "DELETE"],
             },
             "authenticators": [{"handler": "cookie_session"}],
@@ -477,7 +477,7 @@ def test_deny_access_rules_rendering_when_multiple_protected_urls_provided(
         {
             "id": f"{app_name}:0:deny",
             "match": {
-                "url": "<https|http>://example.com/unit-0/<(?!welcome|(about/app)).*>",
+                "url": "<^(https|http)>://example.com/unit-0/<(?!welcome$|about/app$).*>",
                 "methods": ["GET", "POST", "OPTION", "PUT", "PATCH", "DELETE"],
             },
             "authenticators": [{"handler": "cookie_session"}],
@@ -488,7 +488,7 @@ def test_deny_access_rules_rendering_when_multiple_protected_urls_provided(
         {
             "id": f"{app_name}:1:deny",
             "match": {
-                "url": "<https|http>://example.com/unit-1/<(?!welcome|(about/app)).*>",
+                "url": "<^(https|http)>://example.com/unit-1/<(?!welcome$|about/app$).*>",
                 "methods": ["GET", "POST", "OPTION", "PUT", "PATCH", "DELETE"],
             },
             "authenticators": [{"handler": "cookie_session"}],
@@ -518,7 +518,7 @@ def test_all_endpoints_protected_when_no_allowed_endpoints_provided(
         {
             "id": f"{app_name}:0:deny",
             "match": {
-                "url": "<https|http>://example.com/<.*>",
+                "url": "<^(https|http)>://example.com/<.*>",
                 "methods": ["GET", "POST", "OPTION", "PUT", "PATCH", "DELETE"],
             },
             "authenticators": [{"handler": "cookie_session"}],

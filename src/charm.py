@@ -339,8 +339,11 @@ class OathkeeperCharm(CharmBase):
         rules = list()
 
         for url_index, url in enumerate(protected_urls):
+            # Parse url
+            if url.endswith("/"):
+                url = url[:-1]
             # Replace with regex to match both http and https
-            url = url.replace("https", "<https|http>")
+            url = url.replace("https", "<^(https|http)>")
 
             if rule_type == "allow":
                 if not allowed_endpoints:
@@ -361,9 +364,7 @@ class OathkeeperCharm(CharmBase):
                     # Render a regex to exclude allowed endpoints
                     exclude_endpoints = list()
                     for endpoint in allowed_endpoints:
-                        if "/" in endpoint:
-                            # about/app must become a group: (about/app)
-                            endpoint = f"({endpoint})"
+                        endpoint = f"{endpoint}$"
                         exclude_endpoints.append(endpoint)
 
                     # Add | alternation
