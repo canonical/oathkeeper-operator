@@ -2,3 +2,4 @@ ops>=2.0.0
 lightkube
 lightkube-models
 jinja2
+jsonschema

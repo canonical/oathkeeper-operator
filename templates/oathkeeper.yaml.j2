@@ -11,6 +11,7 @@ serve:
 
 errors:
   fallback:
+    - www_authenticate
     - json
 
   handlers:
@@ -18,6 +19,7 @@ errors:
       enabled: true
       config:
         to: {{ kratos_login_url | d("http://default-kratos-url/self-service/login/browser", true) }}
+        return_to_query_param: return_to
         when:
           - error:
               - unauthorized
@@ -26,13 +28,25 @@ errors:
               header:
                 accept:
                   - text/html
+    www_authenticate:
+      enabled: true
+      config:
+        realm: unauthorized
+        when:
+          - error:
+              - not_found
+              - internal_server_error
     json:
       enabled: true
 
 access_rules:
   matching_strategy: regexp
+  {%- if access_rules %}
   repositories:
-    - file:///etc/config/oathkeeper/access-rules.yaml
+  {%- for access_rule in access_rules %}
+    - file://{{ access_rule }}
+  {%- endfor %}
+  {%- endif %}
 
 authenticators:
   noop:

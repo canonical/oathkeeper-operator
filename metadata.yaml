@@ -17,7 +17,14 @@ resources:
     type: oci-image
     description: OCI image for oathkeeper container
     upstream-source: ghcr.io/canonical/oathkeeper:0.40.3
+provides:
+  auth-proxy:
+    interface: auth_proxy
+    limit: 1
 requires:
   kratos-endpoint-info:
     interface: kratos_endpoints
     limit: 1
+peers:
+  oathkeeper:
+    interface: oathkepeer_peers
