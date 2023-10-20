@@ -13,7 +13,7 @@ To get started using the library, you need to fetch the library using `charmcraf
 
 ```shell
 cd some-charm
-charmcraft fetch-lib charms.traefik_k8s.v0.forward_auth
+charmcraft fetch-lib charms.oathkeeper.v0.forward_auth
 ```
 
 To use the library from the requirer side, add the following to the `metadata.yaml` of the charm:
@@ -27,33 +27,29 @@ requires:
 
 Then, to initialise the library:
 ```python
-from charms.traefik_k8s.v0.forward_auth import ...
+from charms.oathkeeper.v0.forward_auth import ForwardAuthConfigChangedEvent, ForwardAuthRequirer
 
 class ApiGatewayCharm(CharmBase):
     def __init__(self, *args):
         # ...
-        self.auth_proxy = AuthProxyRequirer(self, self._auth_proxy_config)
-
-        @property
-        def _auth_proxy_config(self) -> ForwardAuthConfig:
-            return ForwardAuthConfig(
-                protected_urls=self.external_url,
-                allowed_endpoints=AUTH_PROXY_ALLOWED_ENDPOINTS,
-                headers=AUTH_PROXY_HEADERS
+        self.forward_auth = ForwardAuthRequirer(self)
+        self.framework.observe(
+            self.forward_auth.on.forward_auth_config_changed,
+            self.some_event_function
             )
 
-        def _on_ingress_ready(self, event):
-            self.external_url = "https://example.com"
-            self._configure_auth_proxy()
-
-        def _configure_auth_proxy(self):
-            self.auth_proxy.update_auth_proxy_config(auth_proxy_config=self._auth_proxy_config)
+    def some_event_function(self, event: ForwardAuthConfigChangedEvent):
+        if self.forward_auth.is_ready():
+            # Fetch the relation info
+            forward_auth_data = self.forward_auth.get_forward_auth_data()
+            # update ingress configuration
+            # ...
 ```
 """
 
+import inspect
 import json
 import logging
-import re
 from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Mapping, Optional
 
@@ -63,7 +59,7 @@ from ops.framework import EventBase, EventSource, Handle, Object, ObjectEvents
 from ops.model import Relation, TooManyRelatedAppsError
 
 # The unique Charmhub library identifier, never change it
-LIBID = ""
+LIBID = "3fd31fa89da34d7f9ad9b62d5f7e7b48"
 
 # Increment this major API version when introducing breaking changes
 LIBAPI = 0
@@ -77,40 +73,31 @@ INTERFACE_NAME = "forward_auth"
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_HEADERS = ["X-User"]
+FORWARD_AUTH_PROVIDER_JSON_SCHEMA = {
+    "$schema": "http://json-schema.org/draft-07/schema",
+    "$id": "https://canonical.github.io/charm-relation-interfaces/docs/json_schemas/forward_auth/v0/provider.json",
+    "type": "object",
+    "properties": {
+        "decisions_address": {"type": "string", "default": None},
+        "app_names": {"type": "array", "default": None, "items": {"type": "string"}},
+        "headers": {"type": "array", "default": None, "items": {"type": "string"}},
+    },
+    "required": ["decisions_address", "app_names"],
+}
 
-url_regex = re.compile(
-    r"(^http://)|(^https://)"  # http:// or https://
-    r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|"
-    r"[A-Z0-9-]{2,}\.?)|"  # domain...
-    r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ...or ip
-    r"(?::\d+)?"  # optional port
-    r"(?:/?|[/?]\S+)$",
-    re.IGNORECASE,
-)
-
-AUTH_PROXY_REQUIRER_JSON_SCHEMA = {
+FORWARD_AUTH_REQUIRER_JSON_SCHEMA = {
     "$schema": "http://json-schema.org/draft-07/schema",
     "$id": "https://canonical.github.io/charm-relation-interfaces/docs/json_schemas/forward_auth/v0/requirer.json",
     "type": "object",
     "properties": {
-        "protected_urls": {"type": "array", "default": None, "items": {"type": "string"}},
-        "allowed_endpoints": {"type": "array", "default": [], "items": {"type": "string"}},
-        "headers": {
-            "type": "array",
-            "default": ["X-User"],
-            "items": {
-                "enum": ALLOWED_HEADERS,
-                "type": "string",
-            },
-        },
+        "ingress_app_names": {"type": "array", "default": None, "items": {"type": "string"}},
     },
-    "required": ["protected_urls", "allowed_endpoints", "headers"],
+    "required": ["ingress_app_names"],
 }
 
 
 class ForwardAuthConfigError(Exception):
-    """Emitted when invalid auth proxy config is provided."""
+    """Emitted when invalid forward auth config is provided."""
 
 
 class DataValidationError(RuntimeError):
@@ -147,8 +134,8 @@ def _dump_data(data: Dict, schema: Optional[Dict] = None) -> Dict:
     return ret
 
 
-class AuthProxyRelation(Object):
-    """A class containing helper methods for auth-proxy relation."""
+class ForwardAuthRelation(Object):
+    """A class containing helper methods for forward-auth relation."""
 
     def _pop_relation_data(self, relation_id: Relation) -> None:
         if not self.model.unit.is_leader():
@@ -181,31 +168,30 @@ def _validate_data(data: Dict, schema: Dict) -> None:
 
 @dataclass
 class ForwardAuthConfig:
-    """Helper class containing a configuration for the charm related with Oathkeeper."""
+    """Helper class containing configuration required by API Gateway to set up the proxy."""
 
-    protected_urls: List[str]
-    headers: List[str]
-    allowed_endpoints: List[str] = field(default_factory=lambda: [])
+    decisions_address: str
+    app_names: List[str]
+    headers: List[str] = field(default_factory=lambda: [])
 
-    def validate(self) -> None:
-        """Validate the auth proxy configuration."""
-        # Validate protected_urls
-        for url in self.protected_urls:
-            if not re.match(url_regex, url):
-                raise ForwardAuthConfigError(f"Invalid URL {url}")
+    @classmethod
+    def from_dict(cls, dic: Dict) -> "ForwardAuthConfig":
+        """Generate ForwardAuthConfig instance from dict."""
+        return cls(**{k: v for k, v in dic.items() if k in inspect.signature(cls).parameters})
 
-        for url in self.protected_urls:
-            if url.startswith("http://"):
-                logger.warning(
-                    f"Provided URL {url} uses http scheme. In order to make the Identity Platform work with the Proxy, run kratos in dev mode: `juju config kratos dev=True`. Don't do this in production"
-                )
+    def to_dict(self) -> Dict:
+        """Convert object to dict."""
+        return {k: v for k, v in asdict(self).items() if v is not None}
 
-        # Validate headers
-        for header in self.headers:
-            if header not in ALLOWED_HEADERS:
-                raise ForwardAuthConfigError(
-                    f"Unsupported header {header}, it must be one of {ALLOWED_HEADERS}"
-                )
+
+@dataclass
+class RequirerConfig:
+    """Helper class containing configuration required by Oathkeeper.
+
+    Its purpose is to evaluate whether apps can be protected by IAP.
+    """
+
+    ingress_app_names: List[str] = field(default_factory=lambda: [])
 
     def to_dict(self) -> Dict:
         """Convert object to dict."""
@@ -213,20 +199,20 @@ class ForwardAuthConfig:
 
 
 class ForwardAuthConfigChangedEvent(EventBase):
-    """Event to notify the Provider charm that the auth proxy config has changed."""
+    """Event to notify the requirer charm that the forward-auth config has changed."""
 
     def __init__(
         self,
         handle: Handle,
-        protected_urls: List[str],
+        decisions_address: str,
+        app_names: List[str],
         headers: List[str],
-        allowed_endpoints: List[str],
         relation_id: int,
         relation_app_name: str,
     ) -> None:
         super().__init__(handle)
-        self.protected_urls = protected_urls
-        self.allowed_endpoints = allowed_endpoints
+        self.decisions_address = decisions_address
+        self.app_names = app_names
         self.headers = headers
         self.relation_id = relation_id
         self.relation_app_name = relation_app_name
@@ -234,32 +220,24 @@ class ForwardAuthConfigChangedEvent(EventBase):
     def snapshot(self) -> Dict:
         """Save event."""
         return {
-            "protected_urls": self.protected_urls,
+            "decisions_address": self.decisions_address,
+            "app_names": self.app_names,
             "headers": self.headers,
-            "allowed_endpoints": self.allowed_endpoints,
             "relation_id": self.relation_id,
             "relation_app_name": self.relation_app_name,
         }
 
     def restore(self, snapshot: Dict) -> None:
         """Restore event."""
-        self.protected_urls = snapshot["protected_urls"]
+        self.decisions_address = snapshot["decisions_address"]
+        self.app_names = snapshot["app_names"]
         self.headers = snapshot["headers"]
-        self.allowed_endpoints = snapshot["allowed_endpoints"]
         self.relation_id = snapshot["relation_id"]
         self.relation_app_name = snapshot["relation_app_name"]
 
-    def to_auth_proxy_config(self) -> ForwardAuthConfig:
-        """Convert the event information to a ForwardAuthConfig object."""
-        return ForwardAuthConfig(
-            self.protected_urls,
-            self.allowed_endpoints,
-            self.headers,
-        )
-
 
 class ForwardAuthConfigRemovedEvent(EventBase):
-    """Event to notify the provider charm that the auth proxy config was removed."""
+    """Event to notify the requirer charm that the forward-auth config was removed."""
 
     def __init__(
         self,
@@ -278,65 +256,160 @@ class ForwardAuthConfigRemovedEvent(EventBase):
         self.relation_id = snapshot["relation_id"]
 
 
-class AuthProxyProviderEvents(ObjectEvents):
-    """Event descriptor for events raised by `AuthProxyProvider`."""
+class ForwardAuthRequirerEvents(ObjectEvents):
+    """Event descriptor for events raised by `ForwardAuthRequirer`."""
 
-    proxy_config_changed = EventSource(ForwardAuthConfigChangedEvent)
-    config_removed = EventSource(ForwardAuthConfigRemovedEvent)
+    forward_auth_config_changed = EventSource(ForwardAuthConfigChangedEvent)
+    forward_auth_config_removed = EventSource(ForwardAuthConfigRemovedEvent)
 
 
-class AuthProxyProvider(AuthProxyRelation):
-    """Provider side of the auth-proxy relation."""
+class ForwardAuthRequirer(ForwardAuthRelation):
+    """Requirer side of the forward-auth relation."""
 
-    on = AuthProxyProviderEvents()
+    on = ForwardAuthRequirerEvents()
 
-    def __init__(self, charm: CharmBase, relation_name: str = RELATION_NAME):
+    def __init__(
+        self,
+        charm: CharmBase,
+        relation_name: str = RELATION_NAME,
+        forward_auth_requirer_config: Optional[RequirerConfig] = None,
+    ):
         super().__init__(charm, relation_name)
 
         self._charm = charm
         self._relation_name = relation_name
+        self._forward_auth_requirer_config = forward_auth_requirer_config
 
         events = self._charm.on[relation_name]
+        self.framework.observe(events.relation_created, self._on_relation_created_event)
         self.framework.observe(events.relation_changed, self._on_relation_changed_event)
         self.framework.observe(events.relation_departed, self._on_relation_departed_event)
 
+    def _on_relation_created_event(self, event: RelationCreatedEvent) -> None:
+        """Update the relation with requirer data when a relation is created."""
+        if not self.model.unit.is_leader():
+            return
+
+        self.update_requirer_relation_data(self._forward_auth_requirer_config, event.relation.id)
+
     def _on_relation_changed_event(self, event: RelationChangedEvent) -> None:
-        """Get the auth-proxy config and emit a custom config-changed event."""
+        """Get the forward-auth config and emit a custom config-changed event."""
         if not self.model.unit.is_leader():
             return
 
         data = event.relation.data[event.app]
         if not data:
-            logger.info("No requirer relation data available.")
+            logger.info("No provider relation data available.")
             return
 
         try:
-            auth_proxy_data = _load_data(data, AUTH_PROXY_REQUIRER_JSON_SCHEMA)
+            forward_auth_data = _load_data(data, FORWARD_AUTH_PROVIDER_JSON_SCHEMA)
         except DataValidationError as e:
             logger.error(
-                f"Received invalid config from the requirer: {e}. Config-changed will not be emitted"
+                f"Received invalid config from the provider: {e}. Config-changed will not be emitted."
             )
             return
 
-        protected_urls = auth_proxy_data.get("protected_urls")
-        allowed_endpoints = auth_proxy_data.get("allowed_endpoints")
-        headers = auth_proxy_data.get("headers")
+        decisions_address = forward_auth_data.get("decisions_address")
+        app_names = forward_auth_data.get("app_names")
+        headers = forward_auth_data.get("headers")
 
         relation_id = event.relation.id
         relation_app_name = event.relation.app.name
 
-        # Notify Oathkeeper to create access rules
-        self.on.proxy_config_changed.emit(
-            protected_urls, headers, allowed_endpoints, relation_id, relation_app_name
+        # Notify Traefik to update the routes
+        self.on.forward_auth_config_changed.emit(
+            decisions_address, app_names, headers, relation_id, relation_app_name
         )
 
     def _on_relation_departed_event(self, event: RelationDepartedEvent) -> None:
-        """Notify Oathkeeper that the relation has departed."""
-        self.on.config_removed.emit(event.relation.id)
+        """Notify the requirer that the relation has departed."""
+        self.on.forward_auth_config_removed.emit(event.relation.id)
+
+    def update_requirer_relation_data(
+        self, ingress_app_names: Optional[RequirerConfig], relation_id: Optional[int] = None
+    ) -> None:
+        """Update the relation databag with app names that can get IAP protection."""
+        if not self.model.unit.is_leader():
+            return
+
+        if not ingress_app_names:
+            logger.error("Ingress-related app names are missing")
+            return
+
+        if not isinstance(ingress_app_names, RequirerConfig):
+            raise ValueError(f"Unexpected type: {type(ingress_app_names)}")
+
+        try:
+            relation = self.model.get_relation(
+                relation_name=self._relation_name, relation_id=relation_id
+            )
+        except TooManyRelatedAppsError:
+            raise RuntimeError("More than one relation is defined. Please provide a relation_id")
+
+        if not relation or not relation.app:
+            return
+
+        data = _dump_data(ingress_app_names.to_dict(), FORWARD_AUTH_REQUIRER_JSON_SCHEMA)
+        relation.data[self.model.app].update(data)
+
+    def get_provider_info(self, relation_id: Optional[int] = None) -> Optional[ForwardAuthConfig]:
+        """Get the provider information from the databag."""
+        if len(self.model.relations) == 0:
+            return None
+        try:
+            relation = self.model.get_relation(self._relation_name, relation_id=relation_id)
+        except TooManyRelatedAppsError:
+            raise RuntimeError("More than one relation is defined. Please provide a relation_id")
+        if not relation or not relation.app:
+            return None
+
+        data = relation.data[relation.app]
+        if not data:
+            logger.info("No relation data available.")
+            return
+
+        data = _load_data(data, FORWARD_AUTH_PROVIDER_JSON_SCHEMA)
+        forward_auth_config = ForwardAuthConfig.from_dict(data)
+        logger.info(f"ForwardAuthConfig: {forward_auth_config}")
+
+        return forward_auth_config
+
+    def is_ready(self, relation_id: Optional[int] = None) -> Optional[bool]:
+        """Checks whether ForwardAuth is ready on this relation.
+
+        Returns True when Oathkeeper shared the config; False otherwise.
+        """
+        if len(self.model.relations) == 0:
+            return None
+        try:
+            relation = self.model.get_relation(self._relation_name, relation_id=relation_id)
+        except TooManyRelatedAppsError:
+            raise RuntimeError("More than one relation is defined. Please provide a relation_id")
+
+        if not relation or not relation.app:
+            return None
+
+        return (
+            "decisions_address" in relation.data[relation.app]
+            and "app_names" in relation.data[relation.app]
+        )
+
+
+class ForwardAuthProxySet(EventBase):
+    """Event to notify the charm that the proxy was set successfully."""
+
+    def snapshot(self) -> Dict:
+        """Save event."""
+        return {}
+
+    def restore(self, snapshot: Dict) -> None:
+        """Restore event."""
+        pass
 
 
 class InvalidForwardAuthConfigEvent(EventBase):
-    """Event to notify the charm that the auth proxy configuration is invalid."""
+    """Event to notify the charm that the forward-auth configuration is invalid."""
 
     def __init__(self, handle: Handle, error: str):
         super().__init__(handle)
@@ -353,93 +426,133 @@ class InvalidForwardAuthConfigEvent(EventBase):
         self.error = snapshot["error"]
 
 
-class AuthProxyRelationRemovedEvent(EventBase):
-    """Custom event to notify the charm that the relation was removed."""
+class ForwardAuthRelationRemovedEvent(EventBase):
+    """Event to notify the charm that the relation was removed."""
+
+    def __init__(
+        self,
+        handle: Handle,
+        relation_id: int,
+    ) -> None:
+        super().__init__(handle)
+        self.relation_id = relation_id
 
     def snapshot(self) -> Dict:
         """Save event."""
-        return {}
+        return {"relation_id": self.relation_id}
 
     def restore(self, snapshot: Dict) -> None:
         """Restore event."""
-        pass
+        self.relation_id = snapshot["relation_id"]
 
 
-class AuthProxyRequirerEvents(ObjectEvents):
-    """Event descriptor for events raised by `AuthProxyRequirer`."""
+class ForwardAuthProviderEvents(ObjectEvents):
+    """Event descriptor for events raised by `ForwardAuthProvider`."""
 
-    invalid_auth_proxy_config = EventSource(InvalidForwardAuthConfigEvent)
-    auth_proxy_relation_removed = EventSource(AuthProxyRelationRemovedEvent)
+    forward_auth_proxy_set = EventSource(ForwardAuthProxySet)
+    invalid_forward_auth_config = EventSource(InvalidForwardAuthConfigEvent)
+    forward_auth_relation_removed = EventSource(ForwardAuthRelationRemovedEvent)
 
 
-class AuthProxyRequirer(AuthProxyRelation):
-    """Requirer side of the auth-proxy relation."""
+class ForwardAuthProvider(ForwardAuthRelation):
+    """Provider side of the forward-auth relation."""
 
-    on = AuthProxyRequirerEvents()
+    on = ForwardAuthProviderEvents()
 
     def __init__(
         self,
         charm: CharmBase,
         relation_name: str = RELATION_NAME,
-        auth_proxy_config: Optional[ForwardAuthConfig] = None,
+        forward_auth_config: Optional[ForwardAuthConfig] = None,
     ) -> None:
         super().__init__(charm, relation_name)
         self.charm = charm
         self._relation_name = relation_name
-        self._auth_proxy_config = auth_proxy_config
+        self.forward_auth_config = forward_auth_config
 
         events = self.charm.on[relation_name]
         self.framework.observe(events.relation_created, self._on_relation_created_event)
+        self.framework.observe(events.relation_changed, self._on_relation_changed_event)
         self.framework.observe(events.relation_departed, self._on_relation_departed_event)
 
     def _on_relation_created_event(self, event: RelationCreatedEvent) -> None:
-        """Update the relation with auth proxy config when a relation is created."""
+        """Update the relation with provider data when a relation is created."""
         if not self.model.unit.is_leader():
             return
 
         try:
-            self._update_relation_data(self._auth_proxy_config, event.relation.id)
+            self._update_relation_data(self.forward_auth_config, event.relation.id)
         except ForwardAuthConfigError as e:
-            self.on.invalid_auth_proxy_config.emit(e.args[0])
+            self.on.invalid_forward_auth_config.emit(e.args[0])
 
-    def _on_relation_departed_event(self, event: RelationDepartedEvent) -> None:
-        """Wipe the relation databag and notify the charm when the relation has departed."""
-        # Workaround for https://github.com/canonical/operator/issues/888
-        self._pop_relation_data(event.relation.id)
-
-        self.on.auth_proxy_relation_removed.emit()
-
-    def _update_relation_data(
-        self, auth_proxy_config: Optional[ForwardAuthConfig], relation_id: Optional[int] = None
-    ) -> None:
-        """Validate the auth-proxy config and update the relation databag."""
+    def _on_relation_changed_event(self, event: RelationChangedEvent) -> None:
+        """Update the relation with forward-auth config when a relation is changed."""
         if not self.model.unit.is_leader():
             return
 
-        if not auth_proxy_config:
-            logger.info("Auth proxy config is missing")
+        # Compare ingress-related apps with apps that requested the proxy
+        self._compare_apps()
+
+    def _on_relation_departed_event(self, event: RelationDepartedEvent) -> None:
+        """Wipe the relation databag and notify the charm that the relation has departed."""
+        # Workaround for https://github.com/canonical/operator/issues/888
+        self._pop_relation_data(event.relation.id)
+
+        self.on.forward_auth_relation_removed.emit(event.relation.id)
+
+    def _compare_apps(self, relation_id: Optional[int] = None):
+        if len(self.model.relations) == 0:
+            return None
+        try:
+            relation = self.model.get_relation(self._relation_name, relation_id=relation_id)
+        except TooManyRelatedAppsError:
+            raise RuntimeError("More than one relation is defined. Please provide a relation_id")
+        if not relation or not relation.app:
+            return None
+
+        requirer_data = relation.data[relation.app]
+        if not requirer_data:
+            logger.info("No requirer relation data available.")
             return
 
-        if not isinstance(auth_proxy_config, ForwardAuthConfig):
-            raise ValueError(f"Unexpected auth_proxy_config type: {type(auth_proxy_config)}")
+        ingress_apps = requirer_data["ingress_app_names"]
 
-        auth_proxy_config.validate()
+        for app in json.loads(relation.data[self.model.app]["app_names"]):
+            if app not in ingress_apps:
+                self.on.invalid_forward_auth_config.emit(error=f"{app} is not related via ingress")
+                return
+
+        self.on.forward_auth_proxy_set.emit()
+
+    def _update_relation_data(
+        self, forward_auth_config: Optional[ForwardAuthConfig], relation_id: Optional[int] = None
+    ) -> None:
+        """Validate the forward-auth config and update the relation databag."""
+        if not self.model.unit.is_leader():
+            return
+
+        if not forward_auth_config:
+            logger.info("Forward-auth config is missing")
+            return
+
+        if not isinstance(forward_auth_config, ForwardAuthConfig):
+            raise ValueError(f"Unexpected forward_auth_config type: {type(forward_auth_config)}")
 
         try:
             relation = self.model.get_relation(
                 relation_name=self._relation_name, relation_id=relation_id
             )
         except TooManyRelatedAppsError:
-            raise RuntimeError("More than one relations are defined. Please provide a relation_id")
+            raise RuntimeError("More than one relation is defined. Please provide a relation_id")
 
         if not relation or not relation.app:
             return
 
-        data = _dump_data(auth_proxy_config.to_dict(), AUTH_PROXY_REQUIRER_JSON_SCHEMA)
+        data = _dump_data(forward_auth_config.to_dict(), FORWARD_AUTH_PROVIDER_JSON_SCHEMA)
         relation.data[self.model.app].update(data)
 
-    def update_auth_proxy_config(
-        self, auth_proxy_config: ForwardAuthConfig, relation_id: Optional[int] = None
+    def update_forward_auth_config(
+        self, forward_auth_config: ForwardAuthConfig, relation_id: Optional[int] = None
     ) -> None:
-        """Update the auth proxy config stored in the object."""
-        self._update_relation_data(auth_proxy_config, relation_id=relation_id)
+        """Update the forward-auth config stored in the object."""
+        self._update_relation_data(forward_auth_config, relation_id=relation_id)

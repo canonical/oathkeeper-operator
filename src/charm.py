@@ -20,6 +20,13 @@ from charms.oathkeeper.v0.auth_proxy import (
     AuthProxyConfigRemovedEvent,
     AuthProxyProvider,
 )
+from charms.oathkeeper.v0.forward_auth import (
+    ForwardAuthConfig,
+    ForwardAuthProvider,
+    ForwardAuthProxySet,
+    ForwardAuthRelationRemovedEvent,
+    InvalidForwardAuthConfigEvent,
+)
 from charms.observability_libs.v0.kubernetes_service_patch import KubernetesServicePatch
 from charms.traefik_k8s.v2.ingress import (
     IngressPerAppReadyEvent,
@@ -62,8 +69,14 @@ class OathkeeperCharm(CharmBase):
 
         self._kratos_relation_name = "kratos-endpoint-info"
         self._auth_proxy_relation_name = "auth-proxy"
+        self._forward_auth_relation_name = "forward-auth"
 
         self.auth_proxy = AuthProxyProvider(self, relation_name=self._auth_proxy_relation_name)
+        self.forward_auth = ForwardAuthProvider(
+            self,
+            relation_name=self._forward_auth_relation_name,
+            forward_auth_config=self._forward_auth_config,
+        )
 
         self.service_patcher = KubernetesServicePatch(
             self, [("oathkeeper-api", OATHKEEPER_API_PORT)]
@@ -93,6 +106,17 @@ class OathkeeperCharm(CharmBase):
         )
         self.framework.observe(
             self.auth_proxy.on.config_removed, self._remove_auth_proxy_configuration
+        )
+
+        self.framework.observe(
+            self.forward_auth.on.forward_auth_proxy_set, self._on_forward_auth_proxy_set
+        )
+        self.framework.observe(
+            self.forward_auth.on.invalid_forward_auth_config, self._on_invalid_forward_auth_config
+        )
+        self.framework.observe(
+            self.forward_auth.on.forward_auth_relation_removed,
+            self._on_forward_auth_relation_removed,
         )
 
         self.framework.observe(self.on.list_rules_action, self._on_list_rules_action)
@@ -141,6 +165,14 @@ class OathkeeperCharm(CharmBase):
         except (ModelError, RuntimeError):
             return False
         return service.is_running()
+
+    @property
+    def _forward_auth_config(self) -> ForwardAuthConfig:
+        return ForwardAuthConfig(
+            decisions_address=f"https://{self.app.name}.{self.model.name}.svc.cluster.local:{OATHKEEPER_API_PORT}/decisions",
+            app_names=self.auth_proxy.get_app_names(),
+            headers=self.auth_proxy.get_headers(),
+        )
 
     @property
     def _kratos_login_url(self) -> Optional[str]:
@@ -301,6 +333,21 @@ class OathkeeperCharm(CharmBase):
         event.log(f"Successfully fetched rule: {rule_id}")
         event.set_results(rule)
 
+    def _on_invalid_forward_auth_config(self, event: InvalidForwardAuthConfigEvent) -> None:
+        logger.info(
+            "The forward-auth config is invalid: one or more of the related apps is missing ingress relation"
+        )
+        self.unit.status = BlockedStatus(event.error)
+
+    def _on_forward_auth_proxy_set(self, event: ForwardAuthProxySet) -> None:
+        logger.info("The proxy was set successfully")
+        self.unit.status = ActiveStatus("Identity and Access Proxy is ready")
+
+    def _on_forward_auth_relation_removed(self, event: ForwardAuthRelationRemovedEvent) -> None:
+        logger.info("The proxy was unset")
+        # The proxy was removed, but the charm is still functional
+        self.unit.status = ActiveStatus()
+
     def _on_auth_proxy_config_changed(self, event: AuthProxyConfigChangedEvent) -> None:
         if not self._oathkeeper_service_is_running:
             self.unit.status = WaitingStatus("Waiting for Oathkeeper service")
@@ -338,6 +385,9 @@ class OathkeeperCharm(CharmBase):
             self.unit.status = BlockedStatus("Failed to set new config, see logs")
             self._pop_auth_proxy_relation_peer_data(event.relation_id)
             return
+
+        logger.info("Auth-proxy config has changed. Forward-auth relation will be updated")
+        self.forward_auth.update_forward_auth_config(self._forward_auth_config)
 
     def _rule_template(
         self, rule_id: str, url: str, authenticator: str, mutator: str, error_handler: str
@@ -439,6 +489,7 @@ class OathkeeperCharm(CharmBase):
         self._pop_auth_proxy_relation_peer_data(event.relation_id)
 
         self._push_oathkeeper_config()
+        self.forward_auth.update_forward_auth_config(self._forward_auth_config)
 
 
 if __name__ == "__main__":
