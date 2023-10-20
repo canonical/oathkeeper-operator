@@ -2,9 +2,9 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Interface library for providing Oathkeeper with downstream charms' auth-proxy information.
+"""Interface library for providing API Gateways with Identity and Access Proxy information.
 
-It is required to integrate a charm into an Identity and Access Proxy (IAP).
+It is required to integrate with Oathkeeper (Policy Decision Point).
 
 ## Getting Started
 
@@ -13,45 +13,37 @@ To get started using the library, you need to fetch the library using `charmcraf
 
 ```shell
 cd some-charm
-charmcraft fetch-lib charms.oathkeeper.v0.auth_proxy
+charmcraft fetch-lib charms.traefik_k8s.v0.forward_auth
 ```
 
 To use the library from the requirer side, add the following to the `metadata.yaml` of the charm:
 
 ```yaml
 requires:
-  auth-proxy:
-    interface: auth_proxy
+  forward-auth:
+    interface: forward_auth
     limit: 1
 ```
 
 Then, to initialise the library:
 ```python
-from charms.oathkeeper.v0.auth_proxy import AuthProxyConfig, AuthProxyRequirer
+from charms.traefik_k8s.v0.forward_auth import ...
 
-AUTH_PROXY_ALLOWED_ENDPOINTS = ["welcome", "about/app"]
-AUTH_PROXY_HEADERS = ["X-User", "X-Some-Header"]
-
-class SomeCharm(CharmBase):
+class ApiGatewayCharm(CharmBase):
     def __init__(self, *args):
         # ...
         self.auth_proxy = AuthProxyRequirer(self, self._auth_proxy_config)
 
         @property
-        def external_urls(self) -> list:
-            # Get ingress-per-unit or externally-configured web urls
-            # ...
-            return ["https://example.com/unit-0", "https://example.com/unit-1"]
-
-        @property
-        def _auth_proxy_config(self) -> AuthProxyConfig:
-            return AuthProxyConfig(
-                protected_urls=self.external_urls,
+        def _auth_proxy_config(self) -> ForwardAuthConfig:
+            return ForwardAuthConfig(
+                protected_urls=self.external_url,
                 allowed_endpoints=AUTH_PROXY_ALLOWED_ENDPOINTS,
                 headers=AUTH_PROXY_HEADERS
             )
 
         def _on_ingress_ready(self, event):
+            self.external_url = "https://example.com"
             self._configure_auth_proxy()
 
         def _configure_auth_proxy(self):
@@ -71,7 +63,7 @@ from ops.framework import EventBase, EventSource, Handle, Object, ObjectEvents
 from ops.model import Relation, TooManyRelatedAppsError
 
 # The unique Charmhub library identifier, never change it
-LIBID = "0e67a205d1c14d7a86d89f099d19c541"
+LIBID = ""
 
 # Increment this major API version when introducing breaking changes
 LIBAPI = 0
@@ -80,8 +72,8 @@ LIBAPI = 0
 # to 0 if you are raising the major API version
 LIBPATCH = 1
 
-RELATION_NAME = "auth-proxy"
-INTERFACE_NAME = "auth_proxy"
+RELATION_NAME = "forward-auth"
+INTERFACE_NAME = "forward_auth"
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +91,7 @@ url_regex = re.compile(
 
 AUTH_PROXY_REQUIRER_JSON_SCHEMA = {
     "$schema": "http://json-schema.org/draft-07/schema",
-    "$id": "https://canonical.github.io/charm-relation-interfaces/docs/json_schemas/auth_proxy/v0/requirer.json",
+    "$id": "https://canonical.github.io/charm-relation-interfaces/docs/json_schemas/forward_auth/v0/requirer.json",
     "type": "object",
     "properties": {
         "protected_urls": {"type": "array", "default": None, "items": {"type": "string"}},
@@ -117,7 +109,7 @@ AUTH_PROXY_REQUIRER_JSON_SCHEMA = {
 }
 
 
-class AuthProxyConfigError(Exception):
+class ForwardAuthConfigError(Exception):
     """Emitted when invalid auth proxy config is provided."""
 
 
@@ -188,7 +180,7 @@ def _validate_data(data: Dict, schema: Dict) -> None:
 
 
 @dataclass
-class AuthProxyConfig:
+class ForwardAuthConfig:
     """Helper class containing a configuration for the charm related with Oathkeeper."""
 
     protected_urls: List[str]
@@ -200,7 +192,7 @@ class AuthProxyConfig:
         # Validate protected_urls
         for url in self.protected_urls:
             if not re.match(url_regex, url):
-                raise AuthProxyConfigError(f"Invalid URL {url}")
+                raise ForwardAuthConfigError(f"Invalid URL {url}")
 
         for url in self.protected_urls:
             if url.startswith("http://"):
@@ -211,7 +203,7 @@ class AuthProxyConfig:
         # Validate headers
         for header in self.headers:
             if header not in ALLOWED_HEADERS:
-                raise AuthProxyConfigError(
+                raise ForwardAuthConfigError(
                     f"Unsupported header {header}, it must be one of {ALLOWED_HEADERS}"
                 )
 
@@ -220,7 +212,7 @@ class AuthProxyConfig:
         return {k: v for k, v in asdict(self).items() if v is not None}
 
 
-class AuthProxyConfigChangedEvent(EventBase):
+class ForwardAuthConfigChangedEvent(EventBase):
     """Event to notify the Provider charm that the auth proxy config has changed."""
 
     def __init__(
@@ -257,16 +249,16 @@ class AuthProxyConfigChangedEvent(EventBase):
         self.relation_id = snapshot["relation_id"]
         self.relation_app_name = snapshot["relation_app_name"]
 
-    def to_auth_proxy_config(self) -> AuthProxyConfig:
-        """Convert the event information to an AuthProxyConfig object."""
-        return AuthProxyConfig(
+    def to_auth_proxy_config(self) -> ForwardAuthConfig:
+        """Convert the event information to a ForwardAuthConfig object."""
+        return ForwardAuthConfig(
             self.protected_urls,
             self.allowed_endpoints,
             self.headers,
         )
 
 
-class AuthProxyConfigRemovedEvent(EventBase):
+class ForwardAuthConfigRemovedEvent(EventBase):
     """Event to notify the provider charm that the auth proxy config was removed."""
 
     def __init__(
@@ -289,8 +281,8 @@ class AuthProxyConfigRemovedEvent(EventBase):
 class AuthProxyProviderEvents(ObjectEvents):
     """Event descriptor for events raised by `AuthProxyProvider`."""
 
-    proxy_config_changed = EventSource(AuthProxyConfigChangedEvent)
-    config_removed = EventSource(AuthProxyConfigRemovedEvent)
+    proxy_config_changed = EventSource(ForwardAuthConfigChangedEvent)
+    config_removed = EventSource(ForwardAuthConfigRemovedEvent)
 
 
 class AuthProxyProvider(AuthProxyRelation):
@@ -342,33 +334,8 @@ class AuthProxyProvider(AuthProxyRelation):
         """Notify Oathkeeper that the relation has departed."""
         self.on.config_removed.emit(event.relation.id)
 
-    def get_headers(self) -> Optional[List[str]]:
-        """Returns the list of headers from all relations."""
-        if len(self.model.relations) == 0:
-            return None
 
-        headers = list()
-        for relation in self._charm.model.relations[self._relation_name]:
-            for header in json.loads(relation.data[relation.app]["headers"]):
-                # Avoid duplicates
-                if header not in headers:
-                    headers.append(header)
-
-        return headers
-
-    def get_app_names(self) -> Optional[List[str]]:
-        """Returns the list of all related app names."""
-        if len(self.model.relations) == 0:
-            return None
-
-        app_names = list()
-        for relation in self._charm.model.relations[self._relation_name]:
-            app_names.append(relation.app.name)
-
-        return app_names
-
-
-class InvalidAuthProxyConfigEvent(EventBase):
+class InvalidForwardAuthConfigEvent(EventBase):
     """Event to notify the charm that the auth proxy configuration is invalid."""
 
     def __init__(self, handle: Handle, error: str):
@@ -401,7 +368,7 @@ class AuthProxyRelationRemovedEvent(EventBase):
 class AuthProxyRequirerEvents(ObjectEvents):
     """Event descriptor for events raised by `AuthProxyRequirer`."""
 
-    invalid_auth_proxy_config = EventSource(InvalidAuthProxyConfigEvent)
+    invalid_auth_proxy_config = EventSource(InvalidForwardAuthConfigEvent)
     auth_proxy_relation_removed = EventSource(AuthProxyRelationRemovedEvent)
 
 
@@ -413,8 +380,8 @@ class AuthProxyRequirer(AuthProxyRelation):
     def __init__(
         self,
         charm: CharmBase,
-        auth_proxy_config: Optional[AuthProxyConfig] = None,
         relation_name: str = RELATION_NAME,
+        auth_proxy_config: Optional[ForwardAuthConfig] = None,
     ) -> None:
         super().__init__(charm, relation_name)
         self.charm = charm
@@ -432,7 +399,7 @@ class AuthProxyRequirer(AuthProxyRelation):
 
         try:
             self._update_relation_data(self._auth_proxy_config, event.relation.id)
-        except AuthProxyConfigError as e:
+        except ForwardAuthConfigError as e:
             self.on.invalid_auth_proxy_config.emit(e.args[0])
 
     def _on_relation_departed_event(self, event: RelationDepartedEvent) -> None:
@@ -443,7 +410,7 @@ class AuthProxyRequirer(AuthProxyRelation):
         self.on.auth_proxy_relation_removed.emit()
 
     def _update_relation_data(
-        self, auth_proxy_config: Optional[AuthProxyConfig], relation_id: Optional[int] = None
+        self, auth_proxy_config: Optional[ForwardAuthConfig], relation_id: Optional[int] = None
     ) -> None:
         """Validate the auth-proxy config and update the relation databag."""
         if not self.model.unit.is_leader():
@@ -453,7 +420,7 @@ class AuthProxyRequirer(AuthProxyRelation):
             logger.info("Auth proxy config is missing")
             return
 
-        if not isinstance(auth_proxy_config, AuthProxyConfig):
+        if not isinstance(auth_proxy_config, ForwardAuthConfig):
             raise ValueError(f"Unexpected auth_proxy_config type: {type(auth_proxy_config)}")
 
         auth_proxy_config.validate()
@@ -472,7 +439,7 @@ class AuthProxyRequirer(AuthProxyRelation):
         relation.data[self.model.app].update(data)
 
     def update_auth_proxy_config(
-        self, auth_proxy_config: AuthProxyConfig, relation_id: Optional[int] = None
+        self, auth_proxy_config: ForwardAuthConfig, relation_id: Optional[int] = None
     ) -> None:
         """Update the auth proxy config stored in the object."""
         self._update_relation_data(auth_proxy_config, relation_id=relation_id)
