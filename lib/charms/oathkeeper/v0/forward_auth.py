@@ -500,7 +500,14 @@ class ForwardAuthProvider(ForwardAuthRelation):
 
         self.on.forward_auth_relation_removed.emit(event.relation.id)
 
-    def _compare_apps(self, relation_id: Optional[int] = None):
+    def _compare_apps(self, relation_id: Optional[int] = None) -> None:
+        """Compare app names provided by Oathkeeper with apps that are related via ingress.
+
+        The ingress-related app names are provided by the relation requirer.
+        If an app is not related via ingress-per-app/leader/unit,
+        emit `InvalidForwardAuthConfigEvent`.
+        If the app is related via ingress and thus eligible for IAP, emit `ForwardAuthProxySet`.
+        """
         if len(self.model.relations) == 0:
             return None
         try:
