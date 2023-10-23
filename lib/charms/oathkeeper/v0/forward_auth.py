@@ -536,16 +536,11 @@ class ForwardAuthProvider(ForwardAuthRelation):
             return
 
         ingress_apps = requirer_data["ingress_app_names"]
-        app_names = relation.data[self.model.app]["app_names"]
 
-        if app_names:
-            for app in json.loads(app_names):
-                if app not in ingress_apps:
-                    self.on.invalid_forward_auth_config.emit(
-                        error=f"{app} is not related via ingress"
-                    )
-                    return
-
+        for app in json.loads(relation.data[self.model.app]["app_names"]):
+            if app not in ingress_apps:
+                self.on.invalid_forward_auth_config.emit(error=f"{app} is not related via ingress")
+                return
             self.on.forward_auth_proxy_set.emit()
 
     def _update_relation_data(

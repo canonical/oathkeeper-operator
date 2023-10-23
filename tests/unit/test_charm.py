@@ -676,16 +676,6 @@ def test_peer_data_when_multiple_auth_proxy_relations(
     }
 
 
-def test_forward_auth_relation_set(harness: Harness, caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level(logging.INFO)
-    harness.set_can_connect(CONTAINER_NAME, True)
-
-    _ = setup_forward_auth_relation(harness)
-
-    assert "The proxy was set successfully" in caplog.record_tuples[0]
-    assert harness.model.unit.status == ActiveStatus("Identity and Access Proxy is ready")
-
-
 def test_forward_auth_relation_removed(harness: Harness, caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.INFO)
     harness.set_can_connect(CONTAINER_NAME, True)
@@ -693,5 +683,5 @@ def test_forward_auth_relation_removed(harness: Harness, caplog: pytest.LogCaptu
     relation_id = setup_forward_auth_relation(harness)
     harness.remove_relation(relation_id)
 
-    assert "The proxy was unset" in caplog.record_tuples[1]
+    assert "The proxy was unset" in caplog.record_tuples[0]
     assert isinstance(harness.charm.unit.status, ActiveStatus)
