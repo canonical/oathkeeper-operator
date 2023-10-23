@@ -72,6 +72,20 @@ def setup_auth_proxy_relation(
     return relation_id, app_name
 
 
+def setup_forward_auth_relation(harness: Harness) -> Tuple[int, str]:
+    relation_id = harness.add_relation("forward-auth", "requirer")
+    harness.add_relation_unit(relation_id, "requirer/0")
+    harness.update_relation_data(
+        relation_id,
+        "requirer",
+        {
+            "ingress_app_names": '["charmed-app"]',
+        },
+    )
+
+    return relation_id
+
+
 def setup_auth_proxy_relation_without_allowed_endpoints(harness: Harness) -> Tuple[int, str]:
     app_name = "requirer"
     relation_id = harness.add_relation("auth-proxy", app_name)
@@ -660,3 +674,24 @@ def test_peer_data_when_multiple_auth_proxy_relations(
         requirer_auth_proxy_peer_id: requirer_peer_data,
         other_requirer_auth_proxy_peer_id: other_requirer_peer_data,
     }
+
+
+def test_forward_auth_relation_set(harness: Harness, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO)
+    harness.set_can_connect(CONTAINER_NAME, True)
+
+    _ = setup_forward_auth_relation(harness)
+
+    assert "The proxy was set successfully" in caplog.record_tuples[0]
+    assert harness.model.unit.status == ActiveStatus("Identity and Access Proxy is ready")
+
+
+def test_forward_auth_relation_removed(harness: Harness, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO)
+    harness.set_can_connect(CONTAINER_NAME, True)
+
+    relation_id = setup_forward_auth_relation(harness)
+    harness.remove_relation(relation_id)
+
+    assert "The proxy was unset" in caplog.record_tuples[1]
+    assert isinstance(harness.charm.unit.status, ActiveStatus)
