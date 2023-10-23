@@ -375,6 +375,19 @@ class ForwardAuthRequirer(ForwardAuthRelation):
 
         return forward_auth_config
 
+    def get_remote_app_name(self, relation_id: Optional[int] = None) -> Optional[str]:
+        """Get the remote app name."""
+        if len(self.model.relations) == 0:
+            return None
+        try:
+            relation = self.model.get_relation(self._relation_name, relation_id=relation_id)
+        except TooManyRelatedAppsError:
+            raise RuntimeError("More than one relation is defined. Please provide a relation_id")
+        if not relation or not relation.app:
+            return None
+
+        return relation.app.name
+
     def is_ready(self, relation_id: Optional[int] = None) -> Optional[bool]:
         """Checks whether ForwardAuth is ready on this relation.
 
@@ -523,13 +536,17 @@ class ForwardAuthProvider(ForwardAuthRelation):
             return
 
         ingress_apps = requirer_data["ingress_app_names"]
+        app_names = relation.data[self.model.app]["app_names"]
 
-        for app in json.loads(relation.data[self.model.app]["app_names"]):
-            if app not in ingress_apps:
-                self.on.invalid_forward_auth_config.emit(error=f"{app} is not related via ingress")
-                return
+        if app_names:
+            for app in json.loads(app_names):
+                if app not in ingress_apps:
+                    self.on.invalid_forward_auth_config.emit(
+                        error=f"{app} is not related via ingress"
+                    )
+                    return
 
-        self.on.forward_auth_proxy_set.emit()
+            self.on.forward_auth_proxy_set.emit()
 
     def _update_relation_data(
         self, forward_auth_config: Optional[ForwardAuthConfig], relation_id: Optional[int] = None
