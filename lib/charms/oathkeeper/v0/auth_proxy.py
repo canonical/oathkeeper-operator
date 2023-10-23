@@ -349,6 +349,8 @@ class AuthProxyProvider(AuthProxyRelation):
 
         headers = list()
         for relation in self._charm.model.relations[self._relation_name]:
+            if not relation.data[relation.app]:
+                return None
             for header in json.loads(relation.data[relation.app]["headers"]):
                 # Avoid duplicates
                 if header not in headers:
