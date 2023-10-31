@@ -162,7 +162,7 @@ class AuthProxyRelation(Object):
         if not self.model.unit.is_leader():
             return
 
-        if len(self.model.relations) == 0:
+        if not self._charm.model.relations[self._relation_name]:
             return
 
         relation = self.model.get_relation(self._relation_name, relation_id=relation_id)
@@ -344,24 +344,21 @@ class AuthProxyProvider(AuthProxyRelation):
 
     def get_headers(self) -> Optional[List[str]]:
         """Returns the list of headers from all relations."""
-        if len(self.model.relations) == 0:
-            return None
+        if not self._charm.model.relations[self._relation_name]:
+            return []
 
-        headers = list()
+        headers = set()
         for relation in self._charm.model.relations[self._relation_name]:
-            if not relation.data[relation.app]:
-                return None
-            for header in json.loads(relation.data[relation.app]["headers"]):
-                # Avoid duplicates
-                if header not in headers:
-                    headers.append(header)
+            if relation.data[relation.app]:
+                for header in json.loads(relation.data[relation.app]["headers"]):
+                    headers.add(header)
 
-        return headers
+        return list(headers)
 
     def get_app_names(self) -> Optional[List[str]]:
         """Returns the list of all related app names."""
-        if len(self.model.relations) == 0:
-            return None
+        if not self._charm.model.relations[self._relation_name]:
+            return []
 
         app_names = list()
         for relation in self._charm.model.relations[self._relation_name]:
