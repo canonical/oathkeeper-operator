@@ -141,9 +141,10 @@ def test_ingress_relation_revoked(harness: Harness, caplog: pytest.LogCaptureFix
     harness.set_can_connect(CONTAINER_NAME, True)
 
     relation_id, _ = setup_ingress_relation(harness)
+    caplog.clear()
     harness.remove_relation(relation_id)
 
-    assert "This app no longer has ingress" in caplog.record_tuples[1]
+    assert "This app no longer has ingress" in caplog.record_tuples[2]
 
 
 def test_update_container_config_without_kratos_relation(harness: Harness) -> None:
