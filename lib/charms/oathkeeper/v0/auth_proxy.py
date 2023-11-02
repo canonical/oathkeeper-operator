@@ -342,7 +342,7 @@ class AuthProxyProvider(AuthProxyRelation):
         """Notify Oathkeeper that the relation has departed."""
         self.on.config_removed.emit(event.relation.id)
 
-    def get_headers(self) -> Optional[List[str]]:
+    def get_headers(self) -> List[str]:
         """Returns the list of headers from all relations."""
         if not self._charm.model.relations[self._relation_name]:
             return []
@@ -355,7 +355,7 @@ class AuthProxyProvider(AuthProxyRelation):
 
         return list(headers)
 
-    def get_app_names(self) -> Optional[List[str]]:
+    def get_app_names(self) -> List[str]:
         """Returns the list of all related app names."""
         if not self._charm.model.relations[self._relation_name]:
             return []
