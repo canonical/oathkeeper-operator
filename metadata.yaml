@@ -20,11 +20,14 @@ resources:
 provides:
   auth-proxy:
     interface: auth_proxy
-    limit: 1
+  forward-auth:
+    interface: forward_auth
 requires:
   kratos-endpoint-info:
     interface: kratos_endpoints
     limit: 1
+  ingress:
+    interface: ingress
 peers:
   oathkeeper:
     interface: oathkepeer_peers

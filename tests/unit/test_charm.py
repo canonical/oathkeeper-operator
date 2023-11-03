@@ -1,6 +1,8 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
+import json
+import logging
 from typing import Optional, Tuple
 from unittest.mock import MagicMock
 
@@ -15,6 +17,19 @@ ACCESS_RULES_PATH = "/etc/config/oathkeeper"
 CONFIG_FILE_PATH = "/etc/config/oathkeeper.yaml"
 CONTAINER_NAME = "oathkeeper"
 SERVICE_NAME = "oathkeeper"
+
+
+def setup_ingress_relation(harness: Harness) -> Tuple[int, str]:
+    """Set up ingress relation."""
+    relation_id = harness.add_relation("ingress", "traefik")
+    harness.add_relation_unit(relation_id, "traefik/0")
+    url = f"http://ingress:80/{harness.model.name}-oathkeeper"
+    harness.update_relation_data(
+        relation_id,
+        "traefik",
+        {"ingress": json.dumps({"url": url})},
+    )
+    return relation_id, url
 
 
 def setup_kratos_relation(harness: Harness) -> int:
@@ -57,6 +72,20 @@ def setup_auth_proxy_relation(
     return relation_id, app_name
 
 
+def setup_forward_auth_relation(harness: Harness) -> Tuple[int, str]:
+    relation_id = harness.add_relation("forward-auth", "requirer")
+    harness.add_relation_unit(relation_id, "requirer/0")
+    harness.update_relation_data(
+        relation_id,
+        "requirer",
+        {
+            "ingress_app_names": '["charmed-app"]',
+        },
+    )
+
+    return relation_id
+
+
 def setup_auth_proxy_relation_without_allowed_endpoints(harness: Harness) -> Tuple[int, str]:
     app_name = "requirer"
     relation_id = harness.add_relation("auth-proxy", app_name)
@@ -88,6 +117,34 @@ def test_pebble_container_cannot_connect(harness: Harness) -> None:
     harness.charm.on.oathkeeper_pebble_ready.emit(CONTAINER_NAME)
 
     assert harness.charm.unit.status == WaitingStatus("Waiting to connect to Oathkeeper container")
+
+
+def test_ingress_relation_created(harness: Harness) -> None:
+    harness.set_can_connect(CONTAINER_NAME, True)
+
+    relation_id, url = setup_ingress_relation(harness)
+    assert url == "http://ingress:80/testing-oathkeeper"
+
+    app_data = harness.get_relation_data(relation_id, harness.charm.app)
+    assert app_data == {
+        "model": json.dumps(harness.model.name),
+        "name": json.dumps("oathkeeper"),
+        "port": json.dumps(4456),
+        "scheme": json.dumps("http"),
+        "strip-prefix": json.dumps(True),
+        "redirect-https": json.dumps(False),
+    }
+
+
+def test_ingress_relation_revoked(harness: Harness, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO)
+    harness.set_can_connect(CONTAINER_NAME, True)
+
+    relation_id, _ = setup_ingress_relation(harness)
+    caplog.clear()
+    harness.remove_relation(relation_id)
+
+    assert "This app no longer has ingress" in caplog.record_tuples[2]
 
 
 def test_update_container_config_without_kratos_relation(harness: Harness) -> None:
@@ -618,3 +675,14 @@ def test_peer_data_when_multiple_auth_proxy_relations(
         requirer_auth_proxy_peer_id: requirer_peer_data,
         other_requirer_auth_proxy_peer_id: other_requirer_peer_data,
     }
+
+
+def test_forward_auth_relation_removed(harness: Harness, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO)
+    harness.set_can_connect(CONTAINER_NAME, True)
+
+    relation_id = setup_forward_auth_relation(harness)
+    harness.remove_relation(relation_id)
+
+    assert "The proxy was unset" in caplog.record_tuples[0]
+    assert isinstance(harness.charm.unit.status, ActiveStatus)

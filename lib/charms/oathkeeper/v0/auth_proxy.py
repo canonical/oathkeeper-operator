@@ -38,15 +38,20 @@ class SomeCharm(CharmBase):
         self.auth_proxy = AuthProxyRequirer(self, self._auth_proxy_config)
 
         @property
+        def external_urls(self) -> list:
+            # Get ingress-per-unit or externally-configured web urls
+            # ...
+            return ["https://example.com/unit-0", "https://example.com/unit-1"]
+
+        @property
         def _auth_proxy_config(self) -> AuthProxyConfig:
             return AuthProxyConfig(
-                protected_urls=self.external_url,
+                protected_urls=self.external_urls,
                 allowed_endpoints=AUTH_PROXY_ALLOWED_ENDPOINTS,
                 headers=AUTH_PROXY_HEADERS
             )
 
         def _on_ingress_ready(self, event):
-            self.external_url = "https://example.com"
             self._configure_auth_proxy()
 
         def _configure_auth_proxy(self):
@@ -73,7 +78,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 1
+LIBPATCH = 2
 
 RELATION_NAME = "auth-proxy"
 INTERFACE_NAME = "auth_proxy"
@@ -94,7 +99,7 @@ url_regex = re.compile(
 
 AUTH_PROXY_REQUIRER_JSON_SCHEMA = {
     "$schema": "http://json-schema.org/draft-07/schema",
-    "$id": "https://canonical.github.io/charm-relation-interfaces/interfaces/auth-proxy/schemas/requirer.json",
+    "$id": "https://canonical.github.io/charm-relation-interfaces/docs/json_schemas/auth_proxy/v0/requirer.json",
     "type": "object",
     "properties": {
         "protected_urls": {"type": "array", "default": None, "items": {"type": "string"}},
@@ -157,7 +162,7 @@ class AuthProxyRelation(Object):
         if not self.model.unit.is_leader():
             return
 
-        if len(self.model.relations) == 0:
+        if not self._charm.model.relations[self._relation_name]:
             return
 
         relation = self.model.get_relation(self._relation_name, relation_id=relation_id)
@@ -337,6 +342,30 @@ class AuthProxyProvider(AuthProxyRelation):
         """Notify Oathkeeper that the relation has departed."""
         self.on.config_removed.emit(event.relation.id)
 
+    def get_headers(self) -> List[str]:
+        """Returns the list of headers from all relations."""
+        if not self._charm.model.relations[self._relation_name]:
+            return []
+
+        headers = set()
+        for relation in self._charm.model.relations[self._relation_name]:
+            if relation.data[relation.app]:
+                for header in json.loads(relation.data[relation.app]["headers"]):
+                    headers.add(header)
+
+        return list(headers)
+
+    def get_app_names(self) -> List[str]:
+        """Returns the list of all related app names."""
+        if not self._charm.model.relations[self._relation_name]:
+            return []
+
+        app_names = list()
+        for relation in self._charm.model.relations[self._relation_name]:
+            app_names.append(relation.app.name)
+
+        return app_names
+
 
 class InvalidAuthProxyConfigEvent(EventBase):
     """Event to notify the charm that the auth proxy configuration is invalid."""
@@ -383,8 +412,8 @@ class AuthProxyRequirer(AuthProxyRelation):
     def __init__(
         self,
         charm: CharmBase,
-        relation_name: str = RELATION_NAME,
         auth_proxy_config: Optional[AuthProxyConfig] = None,
+        relation_name: str = RELATION_NAME,
     ) -> None:
         super().__init__(charm, relation_name)
         self.charm = charm
