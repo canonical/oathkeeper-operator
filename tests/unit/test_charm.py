@@ -663,11 +663,11 @@ def test_access_rules_pop_from_configmap_on_auth_proxy_config_removed(
     harness.set_can_connect(CONTAINER_NAME, True)
     peer_relation_id, _ = setup_peer_relation(harness)
     relation_id, app_name = setup_auth_proxy_relation(harness)
-    harness.charm.access_rules_configmap.pop_data = mocked_handle = Mock(return_value=None)
+    harness.charm.access_rules_configmap.pop = mocked_handle = Mock(return_value=None)
 
     harness.remove_relation(relation_id)
 
-    configmap_keys = mocked_access_rules_configmap.pop_data.call_args_list[0][1]["keys"]
+    configmap_keys = mocked_access_rules_configmap.pop.call_args_list[0][1]["keys"]
     mocked_handle.assert_called_with(keys=configmap_keys)
 
 

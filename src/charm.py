@@ -284,15 +284,20 @@ class OathkeeperCharm(CharmBase):
         key = self._auth_proxy_relation_peer_data_key(relation_id)
         return self._pop_peer_data(key)
 
-    def _patch_statefulset(self, mount_path: str, name: str, config_map_name: str) -> None:
+    def _patch_statefulset(self) -> None:
         pod_spec_patch = {
             "containers": [
                 {
                     "name": self._container_name,
                     "volumeMounts": [
                         {
-                            "mountPath": mount_path,
-                            "name": name,
+                            "mountPath": self._oathkeeper_config_dir_path,
+                            "name": "config",
+                            "readOnly": True,
+                        },
+                        {
+                            "mountPath": self._access_rules_dir_path,
+                            "name": "access-rules",
                             "readOnly": True,
                         },
                     ],
@@ -300,8 +305,12 @@ class OathkeeperCharm(CharmBase):
             ],
             "volumes": [
                 {
-                    "name": name,
-                    "configMap": {"name": config_map_name},
+                    "name": "config",
+                    "configMap": {"name": self._oathkeeper_config_map_name},
+                },
+                {
+                    "name": "access-rules",
+                    "configMap": {"name": self._access_rules_config_map_name},
                 },
             ],
         }
@@ -317,11 +326,7 @@ class OathkeeperCharm(CharmBase):
 
     def _on_oathkeeper_pebble_ready(self, event: PebbleReadyEvent) -> None:
         """Event Handler for pebble ready event."""
-        self._patch_statefulset(
-            mount_path=self._oathkeeper_config_dir_path,
-            name="config",
-            config_map_name=self._oathkeeper_config_map_name,
-        )
+        self._patch_statefulset()
         self._handle_status_update_config(event)
 
     def _on_remove(self, event: RemoveEvent) -> None:
@@ -446,12 +451,6 @@ class OathkeeperCharm(CharmBase):
                 self.access_rules_configmap.patch(patch=patch, cm_name="access-rules")
                 access_rules_filenames.append(cm_name)
 
-            self._patch_statefulset(
-                mount_path=self._access_rules_dir_path,
-                name="access-rules",
-                config_map_name=self._access_rules_config_map_name,
-            )
-
         self._set_auth_proxy_relation_peer_data(
             event.relation_id, dict(access_rules_filenames=access_rules_filenames)
         )
@@ -545,7 +544,7 @@ class OathkeeperCharm(CharmBase):
             logger.error("No access rules locations found in peer data")
             return
 
-        self.access_rules_configmap.pop_data(keys=peer_data["access_rules_filenames"])
+        self.access_rules_configmap.pop(keys=peer_data["access_rules_filenames"])
         self._pop_auth_proxy_relation_peer_data(event.relation_id)
 
         self._update_config()

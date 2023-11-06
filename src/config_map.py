@@ -86,7 +86,7 @@ class ConfigMapBase:
         """Patch the configMap."""
         self._client.patch(ConfigMap, name=cm_name, namespace=self.namespace, obj=patch)
 
-    def pop_data(self, keys: List[str]):
+    def pop(self, keys: List[str]):
         """Pop data from the configMap."""
         try:
             cm = self._client.get(ConfigMap, self.name, namespace=self.namespace)

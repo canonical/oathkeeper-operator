@@ -90,14 +90,14 @@ def test_config_map_patch(
 
 
 @pytest.mark.parametrize("cls", (OathkeeperConfigMap, AccessRulesConfigMap))
-def test_config_map_pop_data(
+def test_config_map_pop(
     lk_client: MagicMock,
     cls: ConfigMapBase,
     mocked_charm: MagicMock,
 ) -> None:
     cm = cls(lk_client, mocked_charm)
 
-    cm.pop_data(keys=["some-key"])
+    cm.pop(keys=["some-key"])
 
     assert lk_client.replace.called
 
