@@ -4,7 +4,7 @@
 import json
 import logging
 from typing import Optional, Tuple
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 import yaml
@@ -13,8 +13,8 @@ from ops.model import ActiveStatus, WaitingStatus
 from ops.pebble import ExecError
 from ops.testing import Harness
 
-ACCESS_RULES_PATH = "/etc/config/oathkeeper"
-CONFIG_FILE_PATH = "/etc/config/oathkeeper.yaml"
+ACCESS_RULES_PATH = "/etc/config/access-rules"
+CONFIG_FILE_PATH = "/etc/config/oathkeeper/oathkeeper.yaml"
 CONTAINER_NAME = "oathkeeper"
 SERVICE_NAME = "oathkeeper"
 
@@ -147,11 +147,19 @@ def test_ingress_relation_revoked(harness: Harness, caplog: pytest.LogCaptureFix
     assert "This app no longer has ingress" in caplog.record_tuples[2]
 
 
-def test_update_container_config_without_kratos_relation(harness: Harness) -> None:
+def test_on_pebble_ready_lk_called(harness: Harness, lk_client: MagicMock) -> None:
+    container = harness.model.unit.get_container(CONTAINER_NAME)
+    harness.charm.on.oathkeeper_pebble_ready.emit(container)
+
+    lk_client.patch.assert_called_once()
+
+
+def test_update_container_config_without_kratos_relation(
+    harness: Harness, mocked_oathkeeper_configmap: MagicMock
+) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
 
     harness.charm.on.oathkeeper_pebble_ready.emit(CONTAINER_NAME)
-    container = harness.model.unit.get_container(CONTAINER_NAME)
 
     with open("templates/oathkeeper.yaml.j2", "r") as file:
         template = Template(file.read())
@@ -161,15 +169,16 @@ def test_update_container_config_without_kratos_relation(harness: Harness) -> No
         kratos_login_url=None,
     )
 
-    container_config = container.pull(path=CONFIG_FILE_PATH, encoding="utf-8")
-    assert yaml.safe_load(container_config.read()) == yaml.safe_load(expected_config)
+    configmap = mocked_oathkeeper_configmap.update.call_args_list[-1][0][0]
+    config = configmap["oathkeeper.yaml"]
+    assert yaml.safe_load(expected_config) == yaml.safe_load(config)
 
 
-def test_update_container_config_with_kratos_relation(harness: Harness) -> None:
+def test_update_container_config_with_kratos_relation(
+    harness: Harness, mocked_oathkeeper_configmap: MagicMock
+) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
     kratos_relation_id = setup_kratos_relation(harness)
-
-    container = harness.model.unit.get_container(CONTAINER_NAME)
 
     with open("templates/oathkeeper.yaml.j2", "r") as file:
         template = Template(file.read())
@@ -183,8 +192,9 @@ def test_update_container_config_with_kratos_relation(harness: Harness) -> None:
         ],
     )
 
-    container_config = container.pull(path=CONFIG_FILE_PATH, encoding="utf-8")
-    assert yaml.safe_load(container_config.read()) == yaml.safe_load(expected_config)
+    configmap = mocked_oathkeeper_configmap.update.call_args_list[-1][0][0]
+    config = configmap["oathkeeper.yaml"]
+    assert yaml.safe_load(expected_config) == yaml.safe_load(config)
 
 
 def test_on_pebble_ready_correct_plan(harness: Harness) -> None:
@@ -198,12 +208,22 @@ def test_on_pebble_ready_correct_plan(harness: Harness) -> None:
                 "override": "replace",
                 "summary": "Oathkeeper Operator layer",
                 "startup": "enabled",
-                "command": "oathkeeper serve -c /etc/config/oathkeeper.yaml",
+                "command": f"oathkeeper serve -c {CONFIG_FILE_PATH}",
             }
         }
     }
     updated_plan = harness.get_container_pebble_plan(CONTAINER_NAME).to_dict()
     assert expected_plan == updated_plan
+
+
+def test_on_pebble_ready_statefulset_patched(harness: Harness) -> None:
+    harness.set_can_connect(CONTAINER_NAME, True)
+    harness.charm._patch_statefulset = mocked_handle = Mock(return_value=None)
+
+    container = harness.model.unit.get_container(CONTAINER_NAME)
+    harness.charm.on.oathkeeper_pebble_ready.emit(container)
+
+    assert mocked_handle.called
 
 
 def test_list_rules_action(
@@ -321,9 +341,10 @@ def test_no_peer_relation_on_auth_proxy_config_changed(
 def test_config_file_updated_with_access_rules_locations(
     harness: Harness,
     mocked_oathkeeper_is_running: MagicMock,
+    mocked_oathkeeper_configmap: MagicMock,
+    mocked_get_repositories: MagicMock,
 ) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
-    container = harness.model.unit.get_container(CONTAINER_NAME)
     setup_peer_relation(harness)
 
     relation_id, app_name = setup_auth_proxy_relation(harness)
@@ -340,16 +361,19 @@ def test_config_file_updated_with_access_rules_locations(
         ],
     )
 
-    container_config = container.pull(path=CONFIG_FILE_PATH, encoding="utf-8")
-    assert yaml.safe_load(container_config.read()) == yaml.safe_load(expected_config)
+    configmap = mocked_oathkeeper_configmap.update.call_args_list[-1][0][0]
+    container_config = configmap["oathkeeper.yaml"]
+
+    assert yaml.safe_load(container_config) == yaml.safe_load(expected_config)
 
 
 def test_config_file_updated_when_multiple_auth_proxy_relations(
     harness: Harness,
     mocked_oathkeeper_is_running: MagicMock,
+    mocked_oathkeeper_configmap: MagicMock,
+    mocked_get_repositories_for_multiple_relations: MagicMock,
 ) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
-    container = harness.model.unit.get_container(CONTAINER_NAME)
 
     peer_relation_id, _ = setup_peer_relation(harness)
 
@@ -372,16 +396,17 @@ def test_config_file_updated_when_multiple_auth_proxy_relations(
         ],
     )
 
-    container_config = container.pull(path=CONFIG_FILE_PATH, encoding="utf-8")
-    assert yaml.safe_load(container_config.read()) == yaml.safe_load(expected_config)
+    configmap = mocked_oathkeeper_configmap.update.call_args_list[-1][0][0]
+    container_config = configmap["oathkeeper.yaml"]
+    assert yaml.safe_load(container_config) == yaml.safe_load(expected_config)
 
 
 def test_allow_access_rules_rendering(
     harness: Harness,
     mocked_oathkeeper_is_running: MagicMock,
+    mocked_access_rules_configmap: MagicMock,
 ) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
-    container = harness.model.unit.get_container(CONTAINER_NAME)
     setup_peer_relation(harness)
 
     relation_id, app_name = setup_auth_proxy_relation(harness)
@@ -411,33 +436,33 @@ def test_allow_access_rules_rendering(
         },
     ]
 
-    container_allow_rules = container.pull(
-        path=f"{ACCESS_RULES_PATH}/access-rules-{app_name}-allow.json", encoding="utf-8"
-    )
-    assert container_allow_rules.read() == str(expected_allow_rules)
+    configmap_data = mocked_access_rules_configmap.patch.call_args_list[0][1]
+    container_allow_rules = configmap_data["patch"]["data"][f"access-rules-{app_name}-allow.json"]
+    assert str(expected_allow_rules) == container_allow_rules
 
 
 def test_allow_access_rules_not_rendered_when_no_allowed_endpoints_provided(
     harness: Harness,
     mocked_oathkeeper_is_running: MagicMock,
+    mocked_access_rules_configmap: MagicMock,
 ) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
     setup_peer_relation(harness)
 
     relation_id, app_name = setup_auth_proxy_relation_without_allowed_endpoints(harness)
 
-    assert not (
-        harness.get_filesystem_root(CONTAINER_NAME)
-        / f"{ACCESS_RULES_PATH}/access-rules-{app_name}-allow.json"
-    ).exists()
+    configmap_data = mocked_access_rules_configmap.patch.call_args_list[0][1]
+    container_allow_rules = configmap_data["patch"]["data"]
+
+    assert f"access-rules-{app_name}-allow.json" not in container_allow_rules
 
 
 def test_allow_access_rules_rendering_when_auth_proxy_config_changed(
     harness: Harness,
     mocked_oathkeeper_is_running: MagicMock,
+    mocked_access_rules_configmap: MagicMock,
 ) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
-    container = harness.model.unit.get_container(CONTAINER_NAME)
     setup_peer_relation(harness)
 
     relation_id, app_name = setup_auth_proxy_relation(harness)
@@ -476,18 +501,17 @@ def test_allow_access_rules_rendering_when_auth_proxy_config_changed(
         },
     ]
 
-    container_allow_rules = container.pull(
-        path=f"{ACCESS_RULES_PATH}/access-rules-{app_name}-allow.json", encoding="utf-8"
-    )
-    assert container_allow_rules.read() == str(expected_allow_rules)
+    configmap_data = mocked_access_rules_configmap.patch.call_args_list[2][1]
+    container_allow_rules = configmap_data["patch"]["data"][f"access-rules-{app_name}-allow.json"]
+    assert str(expected_allow_rules) == container_allow_rules
 
 
 def test_deny_access_rules_rendering_when_single_protected_url_provided(
     harness: Harness,
     mocked_oathkeeper_is_running: MagicMock,
+    mocked_access_rules_configmap: MagicMock,
 ) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
-    container = harness.model.unit.get_container(CONTAINER_NAME)
     setup_peer_relation(harness)
 
     relation_id, app_name = setup_auth_proxy_relation(harness)
@@ -506,18 +530,17 @@ def test_deny_access_rules_rendering_when_single_protected_url_provided(
         },
     ]
 
-    container_deny_rules = container.pull(
-        path=f"{ACCESS_RULES_PATH}/access-rules-{app_name}-deny.json", encoding="utf-8"
-    )
-    assert container_deny_rules.read() == str(expected_deny_rules)
+    configmap_data = mocked_access_rules_configmap.patch.call_args_list[1][1]
+    container_deny_rules = configmap_data["patch"]["data"][f"access-rules-{app_name}-deny.json"]
+    assert str(expected_deny_rules) == container_deny_rules
 
 
 def test_deny_access_rules_rendering_when_multiple_protected_urls_provided(
     harness: Harness,
     mocked_oathkeeper_is_running: MagicMock,
+    mocked_access_rules_configmap: MagicMock,
 ) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
-    container = harness.model.unit.get_container(CONTAINER_NAME)
     setup_peer_relation(harness)
 
     relation_id, app_name = setup_auth_proxy_relation(harness)
@@ -555,18 +578,17 @@ def test_deny_access_rules_rendering_when_multiple_protected_urls_provided(
         },
     ]
 
-    container_deny_rules = container.pull(
-        path=f"{ACCESS_RULES_PATH}/access-rules-{app_name}-deny.json", encoding="utf-8"
-    )
-    assert container_deny_rules.read() == str(expected_deny_rules)
+    configmap_data = mocked_access_rules_configmap.patch.call_args_list[3][1]
+    container_deny_rules = configmap_data["patch"]["data"][f"access-rules-{app_name}-deny.json"]
+    assert str(expected_deny_rules) == container_deny_rules
 
 
 def test_all_endpoints_protected_when_no_allowed_endpoints_provided(
     harness: Harness,
     mocked_oathkeeper_is_running: MagicMock,
+    mocked_access_rules_configmap: MagicMock,
 ) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
-    container = harness.model.unit.get_container(CONTAINER_NAME)
     setup_peer_relation(harness)
 
     relation_id, app_name = setup_auth_proxy_relation_without_allowed_endpoints(harness)
@@ -585,10 +607,10 @@ def test_all_endpoints_protected_when_no_allowed_endpoints_provided(
         },
     ]
 
-    container_deny_rules = container.pull(
-        path=f"{ACCESS_RULES_PATH}/access-rules-{app_name}-deny.json", encoding="utf-8"
-    )
-    assert container_deny_rules.read() == str(expected_deny_rules)
+    configmap_data = mocked_access_rules_configmap.patch.call_args_list[0][1]
+    container_deny_rules = configmap_data["patch"]["data"][f"access-rules-{app_name}-deny.json"]
+
+    assert str(expected_deny_rules) == container_deny_rules
 
 
 def test_peer_data_set_on_auth_proxy_config_changed(
@@ -601,7 +623,7 @@ def test_peer_data_set_on_auth_proxy_config_changed(
     relation_id, _ = setup_auth_proxy_relation(harness)
     auth_proxy_peer_id = f"auth_proxy_{relation_id}"
 
-    peer_data = '{"access_rules_locations": ["/etc/config/oathkeeper/access-rules-requirer-allow.json", "/etc/config/oathkeeper/access-rules-requirer-deny.json"]}'
+    peer_data = '{"access_rules_filenames": ["access-rules-requirer-allow.json", "access-rules-requirer-deny.json"]}'
     assert harness.get_relation_data(peer_relation_id, harness.charm.app) == {
         auth_proxy_peer_id: peer_data
     }
@@ -633,24 +655,20 @@ def test_peer_data_pop_on_auth_proxy_config_removed(
     assert harness.get_relation_data(peer_relation_id, harness.charm.app) == {}
 
 
-def test_access_rules_files_removed_on_auth_proxy_config_removed(
+def test_access_rules_pop_from_configmap_on_auth_proxy_config_removed(
     harness: Harness,
     mocked_oathkeeper_is_running: MagicMock,
+    mocked_access_rules_configmap: MagicMock,
 ) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
-
     peer_relation_id, _ = setup_peer_relation(harness)
     relation_id, app_name = setup_auth_proxy_relation(harness)
+    harness.charm.access_rules_configmap.pop = mocked_handle = Mock(return_value=None)
 
     harness.remove_relation(relation_id)
 
-    root_dir = harness.get_filesystem_root(CONTAINER_NAME)
-    locations = [
-        f"{ACCESS_RULES_PATH}/access-rules-{app_name}-allow.json",
-        f"{ACCESS_RULES_PATH}/access-rules-{app_name}-deny.json",
-    ]
-    for location in locations:
-        assert not (root_dir / location).exists()
+    configmap_keys = mocked_access_rules_configmap.pop.call_args_list[0][1]["keys"]
+    mocked_handle.assert_called_with(keys=configmap_keys)
 
 
 def test_peer_data_when_multiple_auth_proxy_relations(
@@ -668,8 +686,8 @@ def test_peer_data_when_multiple_auth_proxy_relations(
     )
     other_requirer_auth_proxy_peer_id = f"auth_proxy_{other_requirer_relation_id}"
 
-    requirer_peer_data = '{"access_rules_locations": ["/etc/config/oathkeeper/access-rules-requirer-allow.json", "/etc/config/oathkeeper/access-rules-requirer-deny.json"]}'
-    other_requirer_peer_data = '{"access_rules_locations": ["/etc/config/oathkeeper/access-rules-other-requirer-allow.json", "/etc/config/oathkeeper/access-rules-other-requirer-deny.json"]}'
+    requirer_peer_data = '{"access_rules_filenames": ["access-rules-requirer-allow.json", "access-rules-requirer-deny.json"]}'
+    other_requirer_peer_data = '{"access_rules_filenames": ["access-rules-other-requirer-allow.json", "access-rules-other-requirer-deny.json"]}'
 
     assert harness.get_relation_data(peer_relation_id, harness.charm.app) == {
         requirer_auth_proxy_peer_id: requirer_peer_data,

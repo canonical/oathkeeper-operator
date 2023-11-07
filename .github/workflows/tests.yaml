@@ -60,7 +60,7 @@ jobs:
           juju ssh oathkeeper/0 "PYTHONPATH=agents/unit-oathkeeper-0/charm/venv/ python3 -c '
           from ops import pebble
           p = pebble.Client(\"/charm/containers/oathkeeper/pebble.socket\")
-          f = p.pull(\"/etc/config/oathkeeper.yaml\")
+          f = p.pull(\"/etc/config/oathkeeper/oathkeeper.yaml\")
           print(f.read())
           '"
         if: failure()

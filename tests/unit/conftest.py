@@ -33,6 +33,48 @@ def mocked_oathkeeper_is_running(mocker: MockerFixture) -> MagicMock:
     return mocker.patch("charm.OathkeeperCharm._oathkeeper_service_is_running", return_value=True)
 
 
+@pytest.fixture(autouse=True)
+def lk_client(mocker: MockerFixture) -> None:
+    mock_lightkube = mocker.patch("charm.Client", autospec=True)
+    return mock_lightkube.return_value
+
+
+@pytest.fixture(autouse=True)
+def mocked_oathkeeper_configmap(mocker: MockerFixture) -> MagicMock:
+    mock = mocker.patch("charm.OathkeeperConfigMap", autospec=True)
+    return mock.return_value
+
+
+@pytest.fixture(autouse=True)
+def mocked_access_rules_configmap(mocker: MockerFixture) -> MagicMock:
+    mock = mocker.patch("charm.AccessRulesConfigMap", autospec=True)
+    return mock.return_value
+
+
+@pytest.fixture()
+def mocked_get_repositories(mocker: MockerFixture) -> MagicMock:
+    repositories = [
+        "/etc/config/access-rules/access-rules-requirer-allow.json",
+        "/etc/config/access-rules/access-rules-requirer-deny.json",
+    ]
+    return mocker.patch(
+        "charm.OathkeeperCharm._get_all_access_rules_repositories", return_value=repositories
+    )
+
+
+@pytest.fixture()
+def mocked_get_repositories_for_multiple_relations(mocker: MockerFixture) -> MagicMock:
+    repositories = [
+        "/etc/config/access-rules/access-rules-requirer-allow.json",
+        "/etc/config/access-rules/access-rules-requirer-deny.json",
+        "/etc/config/access-rules/access-rules-other-requirer-allow.json",
+        "/etc/config/access-rules/access-rules-other-requirer-deny.json",
+    ]
+    return mocker.patch(
+        "charm.OathkeeperCharm._get_all_access_rules_repositories", return_value=repositories
+    )
+
+
 @pytest.fixture()
 def oathkeeper_cli_rule() -> Dict:
     return {

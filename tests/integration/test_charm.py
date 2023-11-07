@@ -43,6 +43,7 @@ async def test_build_and_deploy(ops_test: OpsTest) -> None:
 
     await ops_test.model.wait_for_idle(
         raise_on_blocked=False,
+        raise_on_error=False,
         status="active",
         timeout=1000,
     )

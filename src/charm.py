@@ -6,7 +6,6 @@
 
 """A Juju charm for Ory Oathkeeper."""
 
-import itertools
 import json
 import logging
 from typing import Dict, List, Optional
@@ -34,7 +33,17 @@ from charms.traefik_k8s.v2.ingress import (
     IngressPerAppRevokedEvent,
 )
 from jinja2 import Template
-from ops.charm import ActionEvent, CharmBase, HookEvent, PebbleReadyEvent, RelationChangedEvent
+from lightkube import Client
+from lightkube.resources.apps_v1 import StatefulSet
+from ops.charm import (
+    ActionEvent,
+    CharmBase,
+    HookEvent,
+    InstallEvent,
+    PebbleReadyEvent,
+    RelationChangedEvent,
+    RemoveEvent,
+)
 from ops.main import main
 from ops.model import (
     ActiveStatus,
@@ -45,7 +54,10 @@ from ops.model import (
     WaitingStatus,
 )
 from ops.pebble import ChangeError, Error, ExecError, Layer
+from tenacity import before_log, retry, stop_after_attempt, wait_exponential
 
+import config_map
+from config_map import AccessRulesConfigMap, OathkeeperConfigMap
 from oathkeeper_cli import OathkeeperCLI
 
 logger = logging.getLogger(__name__)
@@ -63,9 +75,12 @@ class OathkeeperCharm(CharmBase):
         self._container_name = "oathkeeper"
         self._service_name = "oathkeeper"
         self._container = self.unit.get_container(self._container_name)
-        self._oathkeeper_config_path = "/etc/config/oathkeeper.yaml"
-        self._oathkeeper_access_rules_path = "/etc/config/oathkeeper"
+        self._oathkeeper_config_dir_path = "/etc/config/oathkeeper"
+        self._oathkeeper_config_file_path = "/etc/config/oathkeeper/oathkeeper.yaml"
+        self._access_rules_dir_path = "/etc/config/access-rules"
         self._name = self.model.app.name
+        self._oathkeeper_config_map_name = "oathkeeper-config"
+        self._access_rules_config_map_name = "access-rules"
 
         self._kratos_relation_name = "kratos-endpoint-info"
         self._auth_proxy_relation_name = "auth-proxy"
@@ -86,6 +101,10 @@ class OathkeeperCharm(CharmBase):
             self, relation_name=self._kratos_relation_name
         )
 
+        self.client = Client(field_manager=self.app.name, namespace=self.model.name)
+        self.oathkeeper_configmap = OathkeeperConfigMap(self.client, self)
+        self.access_rules_configmap = AccessRulesConfigMap(self.client, self)
+
         self._oathkeeper_cli = OathkeeperCLI(
             f"http://localhost:{OATHKEEPER_API_PORT}",
             self._container,
@@ -100,6 +119,8 @@ class OathkeeperCharm(CharmBase):
         )
 
         self.framework.observe(self.on.oathkeeper_pebble_ready, self._on_oathkeeper_pebble_ready)
+        self.framework.observe(self.on.install, self._on_install)
+        self.framework.observe(self.on.remove, self._on_remove)
 
         self.framework.observe(
             self.auth_proxy.on.proxy_config_changed, self._on_auth_proxy_config_changed
@@ -138,7 +159,7 @@ class OathkeeperCharm(CharmBase):
                 self._service_name: {
                     "override": "replace",
                     "summary": "Oathkeeper Operator layer",
-                    "command": f"oathkeeper serve -c {self._oathkeeper_config_path}",
+                    "command": f"oathkeeper serve -c {self._oathkeeper_config_file_path}",
                     "startup": "enabled",
                 }
             },
@@ -182,6 +203,13 @@ class OathkeeperCharm(CharmBase):
     def _kratos_session_url(self) -> Optional[str]:
         return self._get_kratos_endpoint_info("sessions_endpoint")
 
+    def _get_all_access_rules_repositories(self) -> Optional[List]:
+        repositories = list()
+        if cm_access_rules := self.access_rules_configmap.get():
+            for key in cm_access_rules.keys():
+                repositories.append(f"{self._access_rules_dir_path}/{key}")
+        return repositories
+
     def _render_conf_file(self) -> str:
         """Render the Oathkeeper configuration file."""
         with open("templates/oathkeeper.yaml.j2", "r") as file:
@@ -190,16 +218,19 @@ class OathkeeperCharm(CharmBase):
         rendered = template.render(
             kratos_session_url=self._kratos_session_url,
             kratos_login_url=self._kratos_login_url,
-            access_rules=self._get_all_access_rules_locations(),
+            access_rules=self._get_all_access_rules_repositories(),
         )
         return rendered
 
-    def _push_oathkeeper_config(self) -> None:
-        self._container.push(
-            self._oathkeeper_config_path,
-            self._render_conf_file(),
-            make_dirs=True,
-        )
+    @retry(
+        wait=wait_exponential(multiplier=3, min=1, max=10),
+        stop=stop_after_attempt(5),
+        reraise=True,
+        before=before_log(logger, logging.DEBUG),
+    )
+    def _update_config(self) -> None:
+        conf = self._render_conf_file()
+        self.oathkeeper_configmap.update({"oathkeeper.yaml": conf})
 
     def _get_kratos_endpoint_info(self, key: str) -> Optional[str]:
         if not self.model.relations[self._kratos_relation_name]:
@@ -253,9 +284,56 @@ class OathkeeperCharm(CharmBase):
         key = self._auth_proxy_relation_peer_data_key(relation_id)
         return self._pop_peer_data(key)
 
+    def _patch_statefulset(self) -> None:
+        pod_spec_patch = {
+            "containers": [
+                {
+                    "name": self._container_name,
+                    "volumeMounts": [
+                        {
+                            "mountPath": self._oathkeeper_config_dir_path,
+                            "name": "config",
+                            "readOnly": True,
+                        },
+                        {
+                            "mountPath": self._access_rules_dir_path,
+                            "name": "access-rules",
+                            "readOnly": True,
+                        },
+                    ],
+                },
+            ],
+            "volumes": [
+                {
+                    "name": "config",
+                    "configMap": {"name": self._oathkeeper_config_map_name},
+                },
+                {
+                    "name": "access-rules",
+                    "configMap": {"name": self._access_rules_config_map_name},
+                },
+            ],
+        }
+        patch = {"spec": {"template": {"spec": pod_spec_patch}}}
+        self.client.patch(StatefulSet, name=self.meta.name, namespace=self.model.name, obj=patch)
+
+    def _on_install(self, event: InstallEvent) -> None:
+        if not self.unit.is_leader():
+            return
+
+        config_map.create_all()
+        self._update_config()
+
     def _on_oathkeeper_pebble_ready(self, event: PebbleReadyEvent) -> None:
         """Event Handler for pebble ready event."""
+        self._patch_statefulset()
         self._handle_status_update_config(event)
+
+    def _on_remove(self, event: RemoveEvent) -> None:
+        if not self.unit.is_leader():
+            return
+
+        config_map.delete_all()
 
     def _on_kratos_relation_changed(self, event: RelationChangedEvent) -> None:
         self._handle_status_update_config(event)
@@ -278,9 +356,8 @@ class OathkeeperCharm(CharmBase):
 
         self.unit.status = MaintenanceStatus("Configuring the container")
 
+        self._update_config()
         self._container.add_layer(self._container_name, self._oathkeeper_layer, combine=True)
-
-        self._push_oathkeeper_config()
 
         try:
             self._container.restart(self._container_name)
@@ -359,7 +436,7 @@ class OathkeeperCharm(CharmBase):
             event.defer()
             return
 
-        access_rules_locations = list()
+        access_rules_filenames = list()
         for rule_type in ("allow", "deny"):
             rules = self._render_access_rules(
                 rule_type=rule_type,
@@ -369,17 +446,17 @@ class OathkeeperCharm(CharmBase):
             )
 
             if rules:
-                # Push the rules to the container
-                filename = f"{self._oathkeeper_access_rules_path}/access-rules-{event.relation_app_name}-{rule_type}.json"
-                self._container.push(filename, str(rules), make_dirs=True)
-                access_rules_locations.append(filename)
+                cm_name = f"access-rules-{event.relation_app_name}-{rule_type}.json"
+                patch = {"data": {cm_name: str(rules)}}
+                self.access_rules_configmap.patch(patch=patch, cm_name="access-rules")
+                access_rules_filenames.append(cm_name)
 
         self._set_auth_proxy_relation_peer_data(
-            event.relation_id, dict(access_rules_locations=access_rules_locations)
+            event.relation_id, dict(access_rules_filenames=access_rules_filenames)
         )
 
         try:
-            self._push_oathkeeper_config()
+            self._update_config()
         except Error as e:
             logger.error(f"Failed to set new config: {e}")
             self.unit.status = BlockedStatus("Failed to set new config, see logs")
@@ -455,22 +532,6 @@ class OathkeeperCharm(CharmBase):
 
         return rules
 
-    def _get_all_access_rules_locations(self) -> Optional[List]:
-        if not self.model.relations[self._auth_proxy_relation_name]:
-            logger.info("No auth-proxy relations found")
-            return None
-
-        relation_locations = list()
-        for relation in self.model.relations[self._auth_proxy_relation_name]:
-            peer_data = self._get_auth_proxy_relation_peer_data(relation.id)
-            if peer_data:
-                relation_locations.append(peer_data["access_rules_locations"])
-
-        # Get a consolidated list of locations
-        access_rules_locations = itertools.chain.from_iterable(relation_locations)
-
-        return access_rules_locations
-
     def _remove_auth_proxy_configuration(self, event: AuthProxyConfigRemovedEvent) -> None:
         """Remove the auth-proxy-related config for a given relation."""
         if not self._peers:
@@ -483,12 +544,10 @@ class OathkeeperCharm(CharmBase):
             logger.error("No access rules locations found in peer data")
             return
 
-        for file in peer_data["access_rules_locations"]:
-            self._container.remove_path(file)
-
+        self.access_rules_configmap.pop(keys=peer_data["access_rules_filenames"])
         self._pop_auth_proxy_relation_peer_data(event.relation_id)
 
-        self._push_oathkeeper_config()
+        self._update_config()
         self.forward_auth.update_forward_auth_config(self._forward_auth_config)
 
 
