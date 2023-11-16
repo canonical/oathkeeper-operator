@@ -6,10 +6,10 @@ from typing import Any, Dict, Generator, List
 
 import pytest
 from charms.oathkeeper.v0.forward_auth import (
-    ForwardAuthConfigChangedEvent,
-    ForwardAuthConfigRemovedEvent,
+    AuthConfigChangedEvent,
+    AuthConfigRemovedEvent,
     ForwardAuthRequirer,
-    RequirerConfig,
+    ForwardAuthRequirerConfig,
 )
 from ops.charm import CharmBase
 from ops.framework import EventBase
@@ -53,18 +53,11 @@ def dict_to_relation_data(dic: Dict) -> Dict:
 class ForwardAuthRequirerCharm(CharmBase):
     def __init__(self, *args: Any) -> None:
         super().__init__(*args)
-        forward_auth_requirer_config = RequirerConfig(**FORWARD_AUTH_REQUIRER_CONFIG)
-        self.forward_auth = ForwardAuthRequirer(
-            self, forward_auth_requirer_config=forward_auth_requirer_config
-        )
+        self.forward_auth = ForwardAuthRequirer(self)
 
         self.events: List = []
-        self.framework.observe(
-            self.forward_auth.on.forward_auth_config_changed, self._record_event
-        )
-        self.framework.observe(
-            self.forward_auth.on.forward_auth_config_removed, self._record_event
-        )
+        self.framework.observe(self.forward_auth.on.auth_config_changed, self._record_event)
+        self.framework.observe(self.forward_auth.on.auth_config_removed, self._record_event)
 
     def _record_event(self, event: EventBase) -> None:
         self.events.append(event)
@@ -90,6 +83,10 @@ def test_data_in_relation_bag(harness: Harness) -> None:
     relation_id = harness.add_relation("forward-auth", "provider")
     relation_data = harness.get_relation_data(relation_id, harness.model.app.name)
 
+    # Call update_requirer_relation_data() to mimic traefik behaviour
+    forward_auth_requirer_config = ForwardAuthRequirerConfig(**FORWARD_AUTH_REQUIRER_CONFIG)
+    harness.charm.forward_auth.update_requirer_relation_data(forward_auth_requirer_config)
+
     assert relation_data == dict_to_relation_data(FORWARD_AUTH_REQUIRER_CONFIG)
 
 
@@ -106,11 +103,11 @@ def test_get_provider_info_when_data_available(harness: Harness, provider_info: 
 def test_forward_auth_config_changed_emitted_when_relation_changed(harness: Harness) -> None:
     _ = setup_provider_relation(harness)
 
-    assert any(isinstance(e, ForwardAuthConfigChangedEvent) for e in harness.charm.events)
+    assert any(isinstance(e, AuthConfigChangedEvent) for e in harness.charm.events)
 
 
 def test_forward_auth_removed_emitted_when_relation_removed(harness: Harness) -> None:
     relation_id = setup_provider_relation(harness)
     harness.remove_relation(relation_id)
 
-    assert any(isinstance(e, ForwardAuthConfigRemovedEvent) for e in harness.charm.events)
+    assert any(isinstance(e, AuthConfigRemovedEvent) for e in harness.charm.events)
