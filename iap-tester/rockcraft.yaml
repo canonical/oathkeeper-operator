@@ -1,7 +1,7 @@
 name: iap-tester
 
 base: bare
-build-base: ubuntu:20.04
+build-base: ubuntu@22.04
 version: '0.1.0'
 summary: Image for Identity and Access Proxy Tester Charm
 description: |
@@ -32,5 +32,10 @@ parts:
     build-packages:
       - make
       - git
+    override-build: |
+      make build
+      install -D -m755 app ${CRAFT_PART_INSTALL}/opt/iap-tester/bin/app
+    organize:
+      opt/iap-tester/bin/app: iap-tester
     stage-packages:
       - base-files_var
