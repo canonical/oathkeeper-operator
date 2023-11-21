@@ -1,0 +1,18 @@
+apiVersion: skaffold/v4beta6
+kind: Config
+build:
+  artifacts:
+  - image: "iap-tester"
+    sync:
+      infer:
+      - "main.go"
+      - "go.mod"
+      - "go.sum"
+    custom:
+      buildCommand: ./build.sh
+      dependencies:
+        paths: 
+          - rockcraft.yaml
+    platforms: ["linux/amd64"]        
+  local:
+    push: true
