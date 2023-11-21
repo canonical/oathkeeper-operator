@@ -1,0 +1,36 @@
+name: iap-tester
+
+base: bare
+build-base: ubuntu:20.04
+version: '0.1.0'
+summary: Image for Identity and Access Proxy Tester Charm
+description: |
+  Rock image used as a base for Identity and Access Proxy (IAP) Tester Charm.
+license: Apache-2.0
+
+platforms:
+  amd64:
+
+services:
+  iap-tester:
+    override: replace
+    command: /iap-tester
+    startup: enabled
+
+parts:
+  certificates:
+    plugin: nil
+    stage-packages:
+      - ca-certificates
+
+  go-build:
+    plugin: go
+    source: .
+    source-type: local
+    build-snaps:
+      - go/1.19/stable
+    build-packages:
+      - make
+      - git
+    stage-packages:
+      - base-files_var
