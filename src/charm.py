@@ -190,7 +190,7 @@ class OathkeeperCharm(CharmBase):
     @property
     def _forward_auth_config(self) -> ForwardAuthConfig:
         return ForwardAuthConfig(
-            decisions_address=f"https://{self.app.name}.{self.model.name}.svc.cluster.local:{OATHKEEPER_API_PORT}/decisions",
+            decisions_address=f"http://{self.app.name}.{self.model.name}.svc.cluster.local:{OATHKEEPER_API_PORT}/decisions",
             app_names=self.auth_proxy.get_app_names(),
             headers=self.auth_proxy.get_headers(),
         )
