@@ -38,6 +38,7 @@ from lightkube.resources.apps_v1 import StatefulSet
 from ops.charm import (
     ActionEvent,
     CharmBase,
+    ConfigChangedEvent,
     HookEvent,
     InstallEvent,
     PebbleReadyEvent,
@@ -120,6 +121,7 @@ class OathkeeperCharm(CharmBase):
 
         self.framework.observe(self.on.oathkeeper_pebble_ready, self._on_oathkeeper_pebble_ready)
         self.framework.observe(self.on.install, self._on_install)
+        self.framework.observe(self.on.config_changed, self._on_config_changed)
         self.framework.observe(self.on.remove, self._on_remove)
 
         self.framework.observe(
@@ -189,8 +191,10 @@ class OathkeeperCharm(CharmBase):
 
     @property
     def _forward_auth_config(self) -> ForwardAuthConfig:
+        scheme = "http" if self.config["dev"] else "https"
+        decisions_url = f"{scheme}://{self.app.name}.{self.model.name}.svc.cluster.local:{OATHKEEPER_API_PORT}/decisions"
         return ForwardAuthConfig(
-            decisions_address=f"http://{self.app.name}.{self.model.name}.svc.cluster.local:{OATHKEEPER_API_PORT}/decisions",
+            decisions_address=decisions_url,
             app_names=self.auth_proxy.get_app_names(),
             headers=self.auth_proxy.get_headers(),
         )
@@ -328,6 +332,9 @@ class OathkeeperCharm(CharmBase):
         """Event Handler for pebble ready event."""
         self._patch_statefulset()
         self._handle_status_update_config(event)
+
+    def _on_config_changed(self, event: ConfigChangedEvent):
+        self.forward_auth.update_forward_auth_config(self._forward_auth_config)
 
     def _on_remove(self, event: RemoveEvent) -> None:
         if not self.unit.is_leader():
