@@ -1,5 +1,7 @@
 # Charmed Ory Oathkeeper
 
+[![CharmHub Badge](https://charmhub.io/oathkeeper/badge.svg)](https://charmhub.io/oathkeeper)
+
 ## Description
 
 Python Operator for Ory Oathkeeper - a cloud native Identity & Access Proxy / API (IAP) and Access Control Decision API that authenticates, authorizes, and mutates incoming HTTP(s) requests. For more details and documentation, visit https://www.ory.sh/docs/oathkeeper/
