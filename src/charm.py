@@ -26,6 +26,7 @@ from charms.oathkeeper.v0.forward_auth import (
     ForwardAuthRelationRemovedEvent,
     InvalidForwardAuthConfigEvent,
 )
+from charms.observability_libs.v0.cert_handler import CertChanged, CertHandler
 from charms.observability_libs.v0.kubernetes_service_patch import KubernetesServicePatch
 from charms.traefik_k8s.v2.ingress import (
     IngressPerAppReadyEvent,
@@ -65,6 +66,10 @@ logger = logging.getLogger(__name__)
 
 OATHKEEPER_API_PORT = 4456
 PEER = "oathkeeper"
+SERVER_CERT_PATH = "/etc/config/server.cert"
+SERVER_KEY_PATH = "/etc/config/server.key"
+CA_CERTS_PATH = "/usr/local/share/ca-certificates"
+CA_CERT_PATH = f"{CA_CERTS_PATH}/oathkeeper-ca.crt"
 
 
 class OathkeeperCharm(CharmBase):
@@ -82,10 +87,19 @@ class OathkeeperCharm(CharmBase):
         self._name = self.model.app.name
         self._oathkeeper_config_map_name = "oathkeeper-config"
         self._access_rules_config_map_name = "access-rules"
+        self._sans_dns = f"{self.app.name}.{self.model.name}.svc.cluster.local"
 
         self._kratos_relation_name = "kratos-endpoint-info"
         self._auth_proxy_relation_name = "auth-proxy"
         self._forward_auth_relation_name = "forward-auth"
+
+        self.cert_handler = CertHandler(
+            self,
+            key="oathkeeper-server-cert",
+            peer_relation_name="oathkeeper",
+            cert_subject=self._sans_dns,
+            extra_sans_dns=[self._sans_dns],
+        )
 
         self.auth_proxy = AuthProxyProvider(self, relation_name=self._auth_proxy_relation_name)
         self.forward_auth = ForwardAuthProvider(
@@ -142,6 +156,8 @@ class OathkeeperCharm(CharmBase):
             self._on_forward_auth_relation_removed,
         )
 
+        self.framework.observe(self.cert_handler.on.cert_changed, self._on_cert_changed)
+
         self.framework.observe(self.on.list_rules_action, self._on_list_rules_action)
         self.framework.observe(self.on.get_rule_action, self._on_get_rule_action)
 
@@ -154,6 +170,15 @@ class OathkeeperCharm(CharmBase):
     @property
     def _oathkeeper_layer(self) -> Layer:
         """Returns a pre-configured Pebble layer."""
+        extra_env = {}
+        if self.cert_handler.cert and self.cert_handler.key:
+            extra_env.update(
+                {
+                    "SERVE_API_TLS_CERT_PATH": SERVER_CERT_PATH,
+                    "SERVE_API_TLS_KEY_PATH": SERVER_KEY_PATH,
+                }
+            )
+
         layer_config = {
             "summary": "oathkeeper-operator layer",
             "description": "pebble config layer for oathkeeper-operator",
@@ -163,6 +188,9 @@ class OathkeeperCharm(CharmBase):
                     "summary": "Oathkeeper Operator layer",
                     "command": f"oathkeeper serve -c {self._oathkeeper_config_file_path}",
                     "startup": "enabled",
+                    "environment": {
+                        **extra_env,
+                    },
                 }
             },
             "checks": {
@@ -191,7 +219,7 @@ class OathkeeperCharm(CharmBase):
 
     @property
     def _forward_auth_config(self) -> ForwardAuthConfig:
-        scheme = "http" if self.config["dev"] else "https"
+        scheme = "https" if self._is_tls_ready() and not self.config["dev"] else "http"
         decisions_url = f"{scheme}://{self.app.name}.{self.model.name}.svc.cluster.local:{OATHKEEPER_API_PORT}/decisions"
         return ForwardAuthConfig(
             decisions_address=decisions_url,
@@ -206,6 +234,16 @@ class OathkeeperCharm(CharmBase):
     @property
     def _kratos_session_url(self) -> Optional[str]:
         return self._get_kratos_endpoint_info("sessions_endpoint")
+
+    def _is_tls_ready(self) -> bool:
+        """Returns True if the workload is ready to operate in TLS mode."""
+        return (
+            self._container.can_connect()
+            and self.cert_handler.enabled
+            and self._container.exists(SERVER_CERT_PATH)
+            and self._container.exists(SERVER_KEY_PATH)
+            and self._container.exists(CA_CERT_PATH)
+        )
 
     def _get_all_access_rules_repositories(self) -> Optional[List]:
         repositories = list()
@@ -353,6 +391,46 @@ class OathkeeperCharm(CharmBase):
         if self.unit.is_leader():
             logger.info("This app no longer has ingress")
 
+    def _on_cert_changed(self, event: CertChanged) -> None:
+        if not self._oathkeeper_service_is_running:
+            logger.info(f"Cannot connect to Oathkeeper container. Deferring the {event} event.")
+            event.defer()
+            return
+
+        self.update_cert_configuration(
+            self.cert_handler.cert, self.cert_handler.key, self.cert_handler.ca
+        )
+
+        self.forward_auth.update_forward_auth_config(self._forward_auth_config)
+
+    def update_cert_configuration(
+        self, cert: Optional[str], key: Optional[str], ca: Optional[str]
+    ) -> None:
+        """Update the server cert, ca, and key configuration files."""
+        if cert and key and ca:
+            self._container.push(SERVER_CERT_PATH, cert, make_dirs=True)
+            self._container.push(SERVER_KEY_PATH, key, make_dirs=True)
+            self._container.push(CA_CERT_PATH, ca, make_dirs=True)
+
+        else:
+            for path in [SERVER_KEY_PATH, SERVER_CERT_PATH, CA_CERT_PATH]:
+                self._container.remove_path(path, recursive=True)
+
+        self._restart_container()
+
+    def _restart_container(self) -> None:
+        """Build a new layer and restart the container."""
+        self._container.add_layer(self._container_name, self._oathkeeper_layer, combine=True)
+
+        try:
+            self._container.restart(self._container_name)
+        except ChangeError as err:
+            logger.error(str(err))
+            self.unit.status = BlockedStatus(
+                "Failed to restart the container, please consult the logs"
+            )
+            return
+
     def _handle_status_update_config(self, event: HookEvent) -> None:
         """Handle unit status, update access rules and config file."""
         if not self._container.can_connect():
@@ -364,16 +442,7 @@ class OathkeeperCharm(CharmBase):
         self.unit.status = MaintenanceStatus("Configuring the container")
 
         self._update_config()
-        self._container.add_layer(self._container_name, self._oathkeeper_layer, combine=True)
-
-        try:
-            self._container.restart(self._container_name)
-        except ChangeError as err:
-            logger.error(str(err))
-            self.unit.status = BlockedStatus(
-                "Failed to restart the container, please consult the logs"
-            )
-            return
+        self._restart_container()
 
         self.unit.status = ActiveStatus()
 

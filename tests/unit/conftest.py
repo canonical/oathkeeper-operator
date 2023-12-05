@@ -99,3 +99,19 @@ def mocked_list_rules(mocker: MockerFixture, oathkeeper_cli_rule: Dict) -> Magic
         return_value=[dict(oathkeeper_cli_rule, id=f"rule-{i}") for i in range(5)],
     )
     return mock
+
+
+@pytest.fixture()
+def mocked_request_certificate_creation(mocker: MockerFixture) -> MagicMock:
+    mocked_request_certificate_creation = mocker.patch(
+        "charms.tls_certificates_interface.v2.tls_certificates.TLSCertificatesRequiresV2.request_certificate_creation"
+    )
+    return mocked_request_certificate_creation
+
+
+@pytest.fixture()
+def mocked_update_forward_auth(mocker: MockerFixture) -> MagicMock:
+    mocked_update_forward_auth = mocker.patch(
+        "charms.oathkeeper.v0.forward_auth.ForwardAuthProvider.update_forward_auth_config"
+    )
+    return mocked_update_forward_auth
