@@ -598,4 +598,3 @@ class ForwardAuthProvider(ForwardAuthRelation):
     ) -> None:
         """Update the forward-auth config stored in the object."""
         self._update_relation_data(forward_auth_config, relation_id=relation_id)
-
