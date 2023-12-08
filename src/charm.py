@@ -6,6 +6,7 @@
 
 """A Juju charm for Ory Oathkeeper."""
 
+import base64
 import json
 import logging
 from typing import Dict, List, Optional
@@ -64,6 +65,7 @@ from oathkeeper_cli import OathkeeperCLI
 
 logger = logging.getLogger(__name__)
 
+# TODO: move all constants to a constants.py file
 OATHKEEPER_API_PORT = 4456
 PEER = "oathkeeper"
 SERVER_CERT_PATH = "/etc/config/server.cert"
@@ -170,15 +172,6 @@ class OathkeeperCharm(CharmBase):
     @property
     def _oathkeeper_layer(self) -> Layer:
         """Returns a pre-configured Pebble layer."""
-        extra_env = {}
-        if self.cert_handler.cert and self.cert_handler.key:
-            extra_env.update(
-                {
-                    "SERVE_API_TLS_CERT_PATH": SERVER_CERT_PATH,
-                    "SERVE_API_TLS_KEY_PATH": SERVER_KEY_PATH,
-                }
-            )
-
         layer_config = {
             "summary": "oathkeeper-operator layer",
             "description": "pebble config layer for oathkeeper-operator",
@@ -188,9 +181,6 @@ class OathkeeperCharm(CharmBase):
                     "summary": "Oathkeeper Operator layer",
                     "command": f"oathkeeper serve -c {self._oathkeeper_config_file_path}",
                     "startup": "enabled",
-                    "environment": {
-                        **extra_env,
-                    },
                 }
             },
             "checks": {
@@ -261,6 +251,14 @@ class OathkeeperCharm(CharmBase):
             kratos_session_url=self._kratos_session_url,
             kratos_login_url=self._kratos_login_url,
             access_rules=self._get_all_access_rules_repositories(),
+            tls_cert_path=SERVER_CERT_PATH if self.cert_handler.cert else None,
+            tls_key_path=SERVER_KEY_PATH if self.cert_handler.key else None,
+            tls_cert=base64.b64encode(self.cert_handler.cert.encode()).decode()
+            if self.cert_handler.cert
+            else None,
+            tls_key=base64.b64encode(self.cert_handler.key.encode()).decode()
+            if self.cert_handler.key
+            else None,
         )
         return rendered
 
@@ -392,7 +390,7 @@ class OathkeeperCharm(CharmBase):
             logger.info("This app no longer has ingress")
 
     def _on_cert_changed(self, event: CertChanged) -> None:
-        if not self._oathkeeper_service_is_running:
+        if not self._container.can_connect():
             logger.info(f"Cannot connect to Oathkeeper container. Deferring the {event} event.")
             event.defer()
             return
@@ -416,6 +414,7 @@ class OathkeeperCharm(CharmBase):
             for path in [SERVER_KEY_PATH, SERVER_CERT_PATH, CA_CERT_PATH]:
                 self._container.remove_path(path, recursive=True)
 
+        self._update_config()
         self._restart_container()
 
     def _restart_container(self) -> None:

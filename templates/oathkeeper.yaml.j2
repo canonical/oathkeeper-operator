@@ -8,6 +8,15 @@ serve:
       enabled: true
       allowed_origins:
         - "*"
+    {%- if tls_cert and tls_key %}
+    tls:
+      cert:
+        base64: {{ tls_cert }}
+        path: {{ tls_cert_path }}
+      key:
+        base64: {{ tls_key }}
+        path: {{ tls_key_path }}
+    {%- endif %}
 
 errors:
   fallback:
