@@ -64,11 +64,12 @@ from oathkeeper_cli import OathkeeperCLI
 
 logger = logging.getLogger(__name__)
 
+# TODO: move all constants to a constants.py file
 OATHKEEPER_API_PORT = 4456
 PEER = "oathkeeper"
-SERVER_CERT_PATH = "/etc/config/server.cert"
-SERVER_KEY_PATH = "/etc/config/server.key"
 CA_CERTS_PATH = "/usr/local/share/ca-certificates"
+SERVER_CERT_PATH = f"{CA_CERTS_PATH}/server.crt"
+SERVER_KEY_PATH = f"{CA_CERTS_PATH}/server.key"
 CA_CERT_PATH = f"{CA_CERTS_PATH}/oathkeeper-ca.crt"
 
 
@@ -171,6 +172,10 @@ class OathkeeperCharm(CharmBase):
     def _oathkeeper_layer(self) -> Layer:
         """Returns a pre-configured Pebble layer."""
         extra_env = {}
+        # We need to push the tls config as env vars due to k8s configmap latency.
+        # Oathkeeper may restart before the config.yaml file is reloaded,
+        # resulting in the app not taking tls into account.
+        # Hot reload of config is not supported for tls changes.
         if self.cert_handler.cert and self.cert_handler.key:
             extra_env.update(
                 {
@@ -392,7 +397,7 @@ class OathkeeperCharm(CharmBase):
             logger.info("This app no longer has ingress")
 
     def _on_cert_changed(self, event: CertChanged) -> None:
-        if not self._oathkeeper_service_is_running:
+        if not self._container.can_connect():
             logger.info(f"Cannot connect to Oathkeeper container. Deferring the {event} event.")
             event.defer()
             return
@@ -416,10 +421,10 @@ class OathkeeperCharm(CharmBase):
             for path in [SERVER_KEY_PATH, SERVER_CERT_PATH, CA_CERT_PATH]:
                 self._container.remove_path(path, recursive=True)
 
-        self._restart_container()
+        self._restart_service()
 
-    def _restart_container(self) -> None:
-        """Build a new layer and restart the container."""
+    def _restart_service(self) -> None:
+        """Build a new layer and restart the service."""
         self._container.add_layer(self._container_name, self._oathkeeper_layer, combine=True)
 
         try:
@@ -442,7 +447,7 @@ class OathkeeperCharm(CharmBase):
         self.unit.status = MaintenanceStatus("Configuring the container")
 
         self._update_config()
-        self._restart_container()
+        self._restart_service()
 
         self.unit.status = ActiveStatus()
 
