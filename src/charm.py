@@ -8,6 +8,9 @@
 
 import json
 import logging
+import os
+import subprocess
+from base64 import b64encode
 from typing import Dict, List, Optional
 
 from charms.kratos.v0.kratos_endpoints import (
@@ -60,17 +63,19 @@ from tenacity import before_log, retry, stop_after_attempt, wait_exponential
 
 import config_map
 from config_map import AccessRulesConfigMap, OathkeeperConfigMap
+from constants import (
+    CA_CERTS_PATH,
+    LOCAL_CA_CERTS_PATH,
+    OATHKEEPER_API_PORT,
+    PEER,
+    SERVER_CA_CERT_PATH,
+    SERVER_CERT_PATH,
+    SERVER_KEY_PATH,
+    SSL_PATH,
+)
 from oathkeeper_cli import OathkeeperCLI
 
 logger = logging.getLogger(__name__)
-
-# TODO: move all constants to a constants.py file
-OATHKEEPER_API_PORT = 4456
-PEER = "oathkeeper"
-CA_CERTS_PATH = "/usr/local/share/ca-certificates"
-SERVER_CERT_PATH = f"{CA_CERTS_PATH}/server.crt"
-SERVER_KEY_PATH = f"{CA_CERTS_PATH}/server.key"
-CA_CERT_PATH = f"{CA_CERTS_PATH}/oathkeeper-ca.crt"
 
 
 class OathkeeperCharm(CharmBase):
@@ -172,17 +177,26 @@ class OathkeeperCharm(CharmBase):
     def _oathkeeper_layer(self) -> Layer:
         """Returns a pre-configured Pebble layer."""
         extra_env = {}
+        domain = "http://localhost"
         # We need to push the tls config as env vars due to k8s configmap latency.
         # Oathkeeper may restart before the config.yaml file is reloaded,
         # resulting in the app not taking tls into account.
         # Hot reload of config is not supported for tls changes.
-        if self.cert_handler.cert and self.cert_handler.key:
+        if all(
+            [
+                self.cert_handler.cert,
+                self.cert_handler.key,
+                self.cert_handler.ca,
+            ]
+        ):
             extra_env.update(
                 {
-                    "SERVE_API_TLS_CERT_PATH": SERVER_CERT_PATH,
-                    "SERVE_API_TLS_KEY_PATH": SERVER_KEY_PATH,
+                    "SERVE_API_TLS_CERT_BASE64": b64encode(bytes(self.cert_handler.cert, "utf-8")),
+                    "SERVE_API_TLS_KEY_BASE64": b64encode(bytes(self.cert_handler.key, "utf-8")),
                 }
             )
+
+            domain = f"https://{self._sans_dns}"
 
         layer_config = {
             "summary": "oathkeeper-operator layer",
@@ -201,11 +215,11 @@ class OathkeeperCharm(CharmBase):
             "checks": {
                 "alive": {
                     "override": "replace",
-                    "http": {"url": f"http://localhost:{OATHKEEPER_API_PORT}/health/alive"},
+                    "http": {"url": f"{domain}:{OATHKEEPER_API_PORT}/health/alive"},
                 },
                 "ready": {
                     "override": "replace",
-                    "http": {"url": f"http://localhost:{OATHKEEPER_API_PORT}/health/ready"},
+                    "http": {"url": f"{domain}:{OATHKEEPER_API_PORT}/health/ready"},
                 },
             },
         }
@@ -242,13 +256,7 @@ class OathkeeperCharm(CharmBase):
 
     def _is_tls_ready(self) -> bool:
         """Returns True if the workload is ready to operate in TLS mode."""
-        return (
-            self._container.can_connect()
-            and self.cert_handler.enabled
-            and self._container.exists(SERVER_CERT_PATH)
-            and self._container.exists(SERVER_KEY_PATH)
-            and self._container.exists(CA_CERT_PATH)
-        )
+        return self.cert_handler.enabled
 
     def _get_all_access_rules_repositories(self) -> Optional[List]:
         repositories = list()
@@ -278,6 +286,17 @@ class OathkeeperCharm(CharmBase):
     def _update_config(self) -> None:
         conf = self._render_conf_file()
         self.oathkeeper_configmap.update({"oathkeeper.yaml": conf})
+
+        if all(
+            [
+                self.cert_handler.cert,
+                self.cert_handler.key,
+                self.cert_handler.ca,
+            ]
+        ):
+            self.update_cert_configuration(
+                self.cert_handler.cert, self.cert_handler.key, self.cert_handler.ca
+            )
 
     def _get_kratos_endpoint_info(self, key: str) -> Optional[str]:
         if not self.model.relations[self._kratos_relation_name]:
@@ -405,24 +424,35 @@ class OathkeeperCharm(CharmBase):
         self.update_cert_configuration(
             self.cert_handler.cert, self.cert_handler.key, self.cert_handler.ca
         )
-
         self.forward_auth.update_forward_auth_config(self._forward_auth_config)
+        self._restart_service()
 
+    # TODO @shipperizer we need to refactor this into separate steps so it's more reusable
     def update_cert_configuration(
         self, cert: Optional[str], key: Optional[str], ca: Optional[str]
     ) -> None:
         """Update the server cert, ca, and key configuration files."""
-        if cert and key and ca:
-            self._container.push(SERVER_CERT_PATH, cert, make_dirs=True)
-            self._container.push(SERVER_KEY_PATH, key, make_dirs=True)
-            self._container.push(CA_CERT_PATH, ca, make_dirs=True)
+        if all([cert, key, ca]):
+            os.makedirs(os.path.dirname(SERVER_CERT_PATH), exist_ok=True)
+            os.makedirs(os.path.dirname(SERVER_KEY_PATH), exist_ok=True)
+            os.makedirs(os.path.dirname(SERVER_CA_CERT_PATH), exist_ok=True)
 
+            with open(SERVER_CERT_PATH, "w+") as f:
+                f.write(cert)
+            with open(SERVER_KEY_PATH, "w+") as f:
+                f.write(key)
+            with open(SERVER_CA_CERT_PATH, "w+") as f:
+                f.write(ca)
+
+            subprocess.run(["update-ca-certificates", "--fresh"], capture_output=True)
+
+            with open(SSL_PATH, "r") as f:
+                self._container.push(SSL_PATH, f.read(), make_dirs=True, user="_daemon_")
         else:
-            for path in [SERVER_KEY_PATH, SERVER_CERT_PATH, CA_CERT_PATH]:
+            for path in [SERVER_KEY_PATH, SERVER_CERT_PATH, SERVER_CA_CERT_PATH]:
                 self._container.remove_path(path, recursive=True)
 
-        self._restart_service()
-
+    # TODO @shipperizer worth analyzing if the add_layer call can be spreaded where needed instead of wired in here
     def _restart_service(self) -> None:
         """Build a new layer and restart the service."""
         self._container.add_layer(self._container_name, self._oathkeeper_layer, combine=True)
