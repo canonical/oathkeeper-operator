@@ -64,8 +64,6 @@ from tenacity import before_log, retry, stop_after_attempt, wait_exponential
 import config_map
 from config_map import AccessRulesConfigMap, OathkeeperConfigMap
 from constants import (
-    CA_CERTS_PATH,
-    LOCAL_CA_CERTS_PATH,
     OATHKEEPER_API_PORT,
     PEER,
     SERVER_CA_CERT_PATH,
@@ -452,7 +450,8 @@ class OathkeeperCharm(CharmBase):
             for path in [SERVER_KEY_PATH, SERVER_CERT_PATH, SERVER_CA_CERT_PATH]:
                 self._container.remove_path(path, recursive=True)
 
-    # TODO @shipperizer worth analyzing if the add_layer call can be spreaded where needed instead of wired in here
+    # TODO @shipperizer worth analyzing if the add_layer call
+    #  can be spread where needed instead of wired in here
     def _restart_service(self) -> None:
         """Build a new layer and restart the service."""
         self._container.add_layer(self._container_name, self._oathkeeper_layer, combine=True)

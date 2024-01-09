@@ -1,8 +1,8 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
+"""Charmed oathkeeper's constant variables."""
 
-# TODO: move all constants to a constants.py file
 OATHKEEPER_API_PORT = 4456
 PEER = "oathkeeper"
 SSL_PATH = "/etc/ssl/certs/ca-certificates.crt"
