@@ -13,3 +13,9 @@ parts:
   charm:
     charm-binary-python-packages:
       - jsonschema
+      - cryptography
+    build-packages:
+      - libffi-dev
+      - libssl-dev
+      - rustc
+      - cargo

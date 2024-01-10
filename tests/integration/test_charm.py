@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 APP_NAME = METADATA["name"]
+CA_CHARM = "self-signed-certificates"
 
 
 async def get_unit_address(ops_test: OpsTest, app_name: str, unit_num: int) -> str:
@@ -78,3 +79,16 @@ async def test_list_rules(ops_test: OpsTest) -> None:
     res = (await action.wait()).results
 
     assert len(res) > 0
+
+
+async def test_certificates_relation(ops_test: OpsTest) -> None:
+    """Test the TLS certificates relation."""
+    await ops_test.model.deploy(
+        CA_CHARM,
+        channel="edge",
+        trust=True,
+    )
+
+    await ops_test.model.add_relation(CA_CHARM, f"{APP_NAME}:certificates")
+
+    await ops_test.model.wait_for_idle([APP_NAME, CA_CHARM], status="active", timeout=1000)

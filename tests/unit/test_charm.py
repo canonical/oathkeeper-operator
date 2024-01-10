@@ -32,6 +32,14 @@ def setup_ingress_relation(harness: Harness) -> Tuple[int, str]:
     return relation_id, url
 
 
+def setup_certificates_relation(harness: Harness) -> int:
+    """Set up tls certificates relation."""
+    relation_id = harness.add_relation("certificates", "certificates-provider")
+    harness.add_relation_unit(relation_id, "certificates-provider/0")
+
+    return relation_id
+
+
 def setup_kratos_relation(harness: Harness) -> int:
     relation_id = harness.add_relation("kratos-endpoint-info", "kratos")
     harness.add_relation_unit(relation_id, "kratos/0")
@@ -704,3 +712,41 @@ def test_forward_auth_relation_removed(harness: Harness, caplog: pytest.LogCaptu
 
     assert "The proxy was unset" in caplog.record_tuples[0]
     assert isinstance(harness.charm.unit.status, ActiveStatus)
+
+
+def test_certificates_relation_databag(
+    harness: Harness, mocked_oathkeeper_is_running: MagicMock
+) -> None:
+    harness.set_can_connect(CONTAINER_NAME, True)
+    peer_relation_id, _ = setup_peer_relation(harness)
+    relation_id = setup_certificates_relation(harness)
+
+    unit_databag = harness.get_relation_data(relation_id, harness.charm.unit.name)
+    assert unit_databag.get("certificate_signing_requests") is not None
+
+
+def test_certificates_creation_requested(
+    harness: Harness,
+    mocked_oathkeeper_is_running: MagicMock,
+    mocked_request_certificate_creation: MagicMock,
+) -> None:
+    harness.set_can_connect(CONTAINER_NAME, True)
+    peer_relation_id, _ = setup_peer_relation(harness)
+    _ = setup_certificates_relation(harness)
+
+    assert harness.charm._sans_dns == f"{SERVICE_NAME}.{harness.model.name}.svc.cluster.local"
+    mocked_request_certificate_creation.assert_called()
+
+
+def test_forward_auth_config_updated_on_tls_set_up(
+    harness: Harness,
+    mocked_oathkeeper_is_running: MagicMock,
+    mocked_update_forward_auth: MagicMock,
+) -> None:
+    harness.set_can_connect(CONTAINER_NAME, True)
+    peer_relation_id, _ = setup_peer_relation(harness)
+    _ = setup_certificates_relation(harness)
+
+    harness.charm.cert_handler.on.cert_changed.emit()
+
+    mocked_update_forward_auth.assert_called()
