@@ -445,7 +445,7 @@ class OathkeeperCharm(CharmBase):
             subprocess.run(["update-ca-certificates", "--fresh"], capture_output=True)
 
             with open(SSL_PATH, "r") as f:
-                self._container.push(SSL_PATH, f.read(), make_dirs=True, user="_daemon_")
+                self._container.push(SSL_PATH, f.read(), make_dirs=True)
         else:
             for path in [SERVER_KEY_PATH, SERVER_CERT_PATH, SERVER_CA_CERT_PATH]:
                 self._container.remove_path(path, recursive=True)
