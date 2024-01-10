@@ -215,10 +215,6 @@ class OathkeeperCharm(CharmBase):
                     "override": "replace",
                     "http": {"url": f"{domain}:{OATHKEEPER_API_PORT}/health/alive"},
                 },
-                "ready": {
-                    "override": "replace",
-                    "http": {"url": f"{domain}:{OATHKEEPER_API_PORT}/health/ready"},
-                },
             },
         }
         return Layer(layer_config)
