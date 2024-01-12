@@ -22,17 +22,16 @@ provides:
     interface: auth_proxy
   forward-auth:
     interface: forward_auth
+  oathkeeper-admin-endpoint:
+    description: |
+      Provides information to the Identity Platform Admin UI to manage Oathkeeper resources
+    interface: admin_ui_service
 requires:
   kratos-endpoint-info:
     interface: kratos_endpoints
     limit: 1
   ingress:
     interface: ingress
-  certificates:
-    interface: tls-certificates
-    limit: 1
-    description: |
-      Send a CSR to- and obtain a signed certificate from an external CA.
 peers:
   oathkeeper:
     interface: oathkepeer_peers
