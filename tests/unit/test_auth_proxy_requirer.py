@@ -9,6 +9,7 @@ import pytest
 from charms.oathkeeper.v0.auth_proxy import (
     AuthProxyConfig,
     AuthProxyConfigError,
+    AuthProxyRelationRemovedEvent,
     AuthProxyRequirer,
     InvalidAuthProxyConfigEvent,
 )
@@ -51,6 +52,7 @@ class AuthProxyRequirerCharm(CharmBase):
 
         self.events: List = []
         self.framework.observe(self.auth_proxy.on.invalid_auth_proxy_config, self._record_event)
+        self.framework.observe(self.auth_proxy.on.auth_proxy_relation_removed, self._record_event)
 
     def _record_event(self, event: EventBase) -> None:
         self.events.append(event)
@@ -94,6 +96,15 @@ def test_exception_raised_when_invalid_header(harness: Harness) -> None:
 
     with pytest.raises(AuthProxyConfigError, match="Unsupported header"):
         harness.charm.auth_proxy.update_auth_proxy_config(auth_proxy_config=auth_proxy_config)
+
+
+def test_auth_proxy_relation_removed_event_emitted(harness: Harness) -> None:
+    relation_id = harness.add_relation("auth-proxy", "provider")
+    harness.add_relation_unit(relation_id, "provider/0")
+
+    harness.remove_relation(relation_id)
+
+    assert any(isinstance(e, AuthProxyRelationRemovedEvent) for e in harness.charm.events)
 
 
 class InvalidConfigAuthProxyRequirerCharm(CharmBase):
