@@ -78,7 +78,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 3
+LIBPATCH = 4
 
 RELATION_NAME = "auth-proxy"
 INTERFACE_NAME = "auth_proxy"
@@ -162,7 +162,7 @@ class AuthProxyRelation(Object):
         if not self.model.unit.is_leader():
             return
 
-        if not self.charm.model.relations[self._relation_name]:
+        if not self._charm.model.relations[self._relation_name]:
             return
 
         relation = self.model.get_relation(self._relation_name, relation_id=relation_id)
@@ -339,7 +339,10 @@ class AuthProxyProvider(AuthProxyRelation):
         )
 
     def _on_relation_departed_event(self, event: RelationDepartedEvent) -> None:
-        """Notify Oathkeeper that the relation has departed."""
+        """Wipe the relation databag and notify Oathkeeper that the relation has departed."""
+        # Workaround for https://github.com/canonical/operator/issues/888
+        self._pop_relation_data(event.relation.id)
+
         self.on.config_removed.emit(event.relation.id)
 
     def get_headers(self) -> List[str]:
@@ -362,7 +365,8 @@ class AuthProxyProvider(AuthProxyRelation):
 
         app_names = list()
         for relation in self._charm.model.relations[self._relation_name]:
-            app_names.append(relation.app.name)
+            if relation.data[relation.app]:
+                app_names.append(relation.app.name)
 
         return app_names
 
@@ -416,11 +420,11 @@ class AuthProxyRequirer(AuthProxyRelation):
         relation_name: str = RELATION_NAME,
     ) -> None:
         super().__init__(charm, relation_name)
-        self.charm = charm
+        self._charm = charm
         self._relation_name = relation_name
         self._auth_proxy_config = auth_proxy_config
 
-        events = self.charm.on[relation_name]
+        events = self._charm.on[relation_name]
         self.framework.observe(events.relation_created, self._on_relation_created_event)
         self.framework.observe(events.relation_departed, self._on_relation_departed_event)
 
