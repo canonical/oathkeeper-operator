@@ -640,6 +640,9 @@ class OathkeeperCharm(CharmBase):
 
     def _remove_auth_proxy_configuration(self, event: AuthProxyConfigRemovedEvent) -> None:
         """Remove the auth-proxy-related config for a given relation."""
+        if not self.unit.is_leader():
+            return
+
         if not self._peers:
             self.unit.status = WaitingStatus("Waiting for peer relation")
             event.defer()

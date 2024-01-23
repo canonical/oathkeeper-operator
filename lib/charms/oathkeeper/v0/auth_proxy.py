@@ -66,7 +66,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Mapping, Optional
 
 import jsonschema
-from ops.charm import CharmBase, RelationChangedEvent, RelationCreatedEvent, RelationDepartedEvent
+from ops.charm import CharmBase, RelationBrokenEvent, RelationChangedEvent, RelationCreatedEvent
 from ops.framework import EventBase, EventSource, Handle, Object, ObjectEvents
 from ops.model import Relation, TooManyRelatedAppsError
 
@@ -306,7 +306,7 @@ class AuthProxyProvider(AuthProxyRelation):
 
         events = self._charm.on[relation_name]
         self.framework.observe(events.relation_changed, self._on_relation_changed_event)
-        self.framework.observe(events.relation_departed, self._on_relation_departed_event)
+        self.framework.observe(events.relation_broken, self._on_relation_broken_event)
 
     def _on_relation_changed_event(self, event: RelationChangedEvent) -> None:
         """Get the auth-proxy config and emit a custom config-changed event."""
@@ -338,8 +338,8 @@ class AuthProxyProvider(AuthProxyRelation):
             protected_urls, headers, allowed_endpoints, relation_id, relation_app_name
         )
 
-    def _on_relation_departed_event(self, event: RelationDepartedEvent) -> None:
-        """Wipe the relation databag and notify Oathkeeper that the relation has departed."""
+    def _on_relation_broken_event(self, event: RelationBrokenEvent) -> None:
+        """Wipe the relation databag and notify Oathkeeper that the relation is broken."""
         # Workaround for https://github.com/canonical/operator/issues/888
         self._pop_relation_data(event.relation.id)
 
@@ -426,7 +426,7 @@ class AuthProxyRequirer(AuthProxyRelation):
 
         events = self._charm.on[relation_name]
         self.framework.observe(events.relation_created, self._on_relation_created_event)
-        self.framework.observe(events.relation_departed, self._on_relation_departed_event)
+        self.framework.observe(events.relation_broken, self._on_relation_broken_event)
 
     def _on_relation_created_event(self, event: RelationCreatedEvent) -> None:
         """Update the relation with auth proxy config when a relation is created."""
@@ -438,8 +438,8 @@ class AuthProxyRequirer(AuthProxyRelation):
         except AuthProxyConfigError as e:
             self.on.invalid_auth_proxy_config.emit(e.args[0])
 
-    def _on_relation_departed_event(self, event: RelationDepartedEvent) -> None:
-        """Wipe the relation databag and notify the charm when the relation has departed."""
+    def _on_relation_broken_event(self, event: RelationBrokenEvent) -> None:
+        """Wipe the relation databag and notify the charm when the relation is broken."""
         # Workaround for https://github.com/canonical/operator/issues/888
         self._pop_relation_data(event.relation.id)
 
