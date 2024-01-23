@@ -66,7 +66,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Mapping, Optional
 
 import jsonschema
-from ops.charm import CharmBase, RelationChangedEvent, RelationCreatedEvent, RelationDepartedEvent
+from ops.charm import CharmBase, RelationBrokenEvent, RelationChangedEvent, RelationCreatedEvent
 from ops.framework import EventBase, EventSource, Handle, Object, ObjectEvents
 from ops.model import Relation, TooManyRelatedAppsError
 
@@ -78,7 +78,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 3
+LIBPATCH = 4
 
 RELATION_NAME = "auth-proxy"
 INTERFACE_NAME = "auth_proxy"
@@ -162,7 +162,7 @@ class AuthProxyRelation(Object):
         if not self.model.unit.is_leader():
             return
 
-        if not self.charm.model.relations[self._relation_name]:
+        if not self._charm.model.relations[self._relation_name]:
             return
 
         relation = self.model.get_relation(self._relation_name, relation_id=relation_id)
@@ -306,7 +306,7 @@ class AuthProxyProvider(AuthProxyRelation):
 
         events = self._charm.on[relation_name]
         self.framework.observe(events.relation_changed, self._on_relation_changed_event)
-        self.framework.observe(events.relation_departed, self._on_relation_departed_event)
+        self.framework.observe(events.relation_broken, self._on_relation_broken_event)
 
     def _on_relation_changed_event(self, event: RelationChangedEvent) -> None:
         """Get the auth-proxy config and emit a custom config-changed event."""
@@ -338,8 +338,11 @@ class AuthProxyProvider(AuthProxyRelation):
             protected_urls, headers, allowed_endpoints, relation_id, relation_app_name
         )
 
-    def _on_relation_departed_event(self, event: RelationDepartedEvent) -> None:
-        """Notify Oathkeeper that the relation has departed."""
+    def _on_relation_broken_event(self, event: RelationBrokenEvent) -> None:
+        """Wipe the relation databag and notify Oathkeeper that the relation is broken."""
+        # Workaround for https://github.com/canonical/operator/issues/888
+        self._pop_relation_data(event.relation.id)
+
         self.on.config_removed.emit(event.relation.id)
 
     def get_headers(self) -> List[str]:
@@ -362,7 +365,8 @@ class AuthProxyProvider(AuthProxyRelation):
 
         app_names = list()
         for relation in self._charm.model.relations[self._relation_name]:
-            app_names.append(relation.app.name)
+            if relation.data[relation.app]:
+                app_names.append(relation.app.name)
 
         return app_names
 
@@ -416,13 +420,13 @@ class AuthProxyRequirer(AuthProxyRelation):
         relation_name: str = RELATION_NAME,
     ) -> None:
         super().__init__(charm, relation_name)
-        self.charm = charm
+        self._charm = charm
         self._relation_name = relation_name
         self._auth_proxy_config = auth_proxy_config
 
-        events = self.charm.on[relation_name]
+        events = self._charm.on[relation_name]
         self.framework.observe(events.relation_created, self._on_relation_created_event)
-        self.framework.observe(events.relation_departed, self._on_relation_departed_event)
+        self.framework.observe(events.relation_broken, self._on_relation_broken_event)
 
     def _on_relation_created_event(self, event: RelationCreatedEvent) -> None:
         """Update the relation with auth proxy config when a relation is created."""
@@ -434,8 +438,8 @@ class AuthProxyRequirer(AuthProxyRelation):
         except AuthProxyConfigError as e:
             self.on.invalid_auth_proxy_config.emit(e.args[0])
 
-    def _on_relation_departed_event(self, event: RelationDepartedEvent) -> None:
-        """Wipe the relation databag and notify the charm when the relation has departed."""
+    def _on_relation_broken_event(self, event: RelationBrokenEvent) -> None:
+        """Wipe the relation databag and notify the charm when the relation is broken."""
         # Workaround for https://github.com/canonical/operator/issues/888
         self._pop_relation_data(event.relation.id)
 
