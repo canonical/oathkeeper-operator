@@ -618,13 +618,13 @@ class OathkeeperCharm(CharmBase):
             if rule_type == "deny":
                 if allowed_endpoints:
                     # Render a regex to exclude allowed endpoints
-                    exclude_endpoints = [endpoint + "$" for endpoint in allowed_endpoints]
+                    exclude_endpoints = ["/" + endpoint + "$" for endpoint in allowed_endpoints]
 
                     # Add | alternation
-                    deny_regex = f"{url}/<(?!{'|'.join(exclude_endpoints)}).*>"
+                    deny_regex = f"{url}<(?!{'|'.join(exclude_endpoints)}).*>"
                 else:
                     # Protect all endpoints
-                    deny_regex = f"{url}/<.*>"
+                    deny_regex = f"{url}<.*>"
 
                 deny_rule = self._rule_template(
                     rule_id=f"{relation_app_name}:{url_index}:deny",
