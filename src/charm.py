@@ -605,9 +605,10 @@ class OathkeeperCharm(CharmBase):
                 if not allowed_endpoints:
                     return None
                 for endpoint in allowed_endpoints:
+                    allow_regex = f"{endpoint}((/.*$)|$)"
                     allow_rule = self._rule_template(
                         rule_id=f"{relation_app_name}:{endpoint}:{url_index}:allow",
-                        url=f"{url}/{endpoint}",
+                        url=f"{url}/{allow_regex}",
                         authenticator="noop",
                         mutator="noop",
                         error_handler="json",
@@ -618,7 +619,9 @@ class OathkeeperCharm(CharmBase):
             if rule_type == "deny":
                 if allowed_endpoints:
                     # Render a regex to exclude allowed endpoints
-                    exclude_endpoints = ["/" + endpoint + "$" for endpoint in allowed_endpoints]
+                    exclude_endpoints = [
+                        "/" + endpoint + "((/.*$)|$)" for endpoint in allowed_endpoints
+                    ]
 
                     # Add | alternation
                     deny_regex = f"{url}<(?!{'|'.join(exclude_endpoints)}).*>"
