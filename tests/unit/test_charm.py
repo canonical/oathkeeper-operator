@@ -423,7 +423,7 @@ def test_allow_access_rules_rendering(
         {
             "id": f"{app_name}:welcome:0:allow",
             "match": {
-                "url": "<^(https|http)>://example.com/welcome((/.*$)|$)",
+                "url": "<^(https|http)>://example.com/<welcome((/.*$)|$)>",
                 "methods": ["GET", "POST", "OPTION", "PUT", "PATCH", "DELETE"],
             },
             "authenticators": [{"handler": "noop"}],
@@ -434,7 +434,7 @@ def test_allow_access_rules_rendering(
         {
             "id": f"{app_name}:about/app:0:allow",
             "match": {
-                "url": "<^(https|http)>://example.com/about/app((/.*$)|$)",
+                "url": "<^(https|http)>://example.com/<about/app((/.*$)|$)>",
                 "methods": ["GET", "POST", "OPTION", "PUT", "PATCH", "DELETE"],
             },
             "authenticators": [{"handler": "noop"}],
@@ -488,7 +488,7 @@ def test_allow_access_rules_rendering_when_auth_proxy_config_changed(
         {
             "id": f"{app_name}:welcome:0:allow",
             "match": {
-                "url": "<^(https|http)>://example.com/welcome((/.*$)|$)",
+                "url": "<^(https|http)>://example.com/<welcome((/.*$)|$)>",
                 "methods": ["GET", "POST", "OPTION", "PUT", "PATCH", "DELETE"],
             },
             "authenticators": [{"handler": "noop"}],
@@ -499,7 +499,7 @@ def test_allow_access_rules_rendering_when_auth_proxy_config_changed(
         {
             "id": f"{app_name}:welcome:1:allow",
             "match": {
-                "url": "<^(https|http)>://other-example.com/welcome((/.*$)|$)",
+                "url": "<^(https|http)>://other-example.com/<welcome((/.*$)|$)>",
                 "methods": ["GET", "POST", "OPTION", "PUT", "PATCH", "DELETE"],
             },
             "authenticators": [{"handler": "noop"}],
