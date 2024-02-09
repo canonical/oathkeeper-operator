@@ -29,7 +29,10 @@ from charms.oathkeeper.v0.forward_auth import (
     ForwardAuthRelationRemovedEvent,
     InvalidForwardAuthConfigEvent,
 )
-from charms.oathkeeper.v0.oathkeeper_info import OathkeeperInfoProvider
+from charms.oathkeeper.v0.oathkeeper_info import (
+    OathkeeperInfoProvider,
+    OathkeeperInfoRelationChangedEvent,
+)
 from charms.observability_libs.v0.cert_handler import CertChanged, CertHandler
 from charms.observability_libs.v0.kubernetes_service_patch import KubernetesServicePatch
 from charms.traefik_k8s.v2.ingress import (
@@ -163,7 +166,7 @@ class OathkeeperCharm(CharmBase):
         )
 
         self.framework.observe(
-            self.info_provider.on.ready, self._update_oathkeeper_info_relation_data
+            self.info_provider.on.data_changed, self._on_oathkeeper_info_relation_changed
         )
 
         self.framework.observe(self.cert_handler.on.cert_changed, self._on_cert_changed)
@@ -429,6 +432,12 @@ class OathkeeperCharm(CharmBase):
         config_map.delete_all()
 
     def _on_kratos_relation_changed(self, event: RelationChangedEvent) -> None:
+        self._handle_status_update_config(event)
+
+    def _on_oathkeeper_info_relation_changed(
+        self, event: OathkeeperInfoRelationChangedEvent
+    ) -> None:
+        self._update_oathkeeper_info_relation_data(event)
         self._handle_status_update_config(event)
 
     def _on_ingress_ready(self, event: IngressPerAppReadyEvent) -> None:

@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, Mock
 import pytest
 import yaml
 from capture_events import capture_events
-from charms.oathkeeper.v0.oathkeeper_info import OathkeeperInfoRelationReadyEvent
+from charms.oathkeeper.v0.oathkeeper_info import OathkeeperInfoRelationChangedEvent
 from jinja2 import Template
 from ops.model import ActiveStatus, WaitingStatus
 from ops.pebble import ExecError
@@ -61,6 +61,13 @@ def setup_kratos_relation(harness: Harness) -> int:
 def setup_oathkeeper_info_relation(harness: Harness) -> int:
     relation_id = harness.add_relation("oathkeeper-info", "requirer")
     harness.add_relation_unit(relation_id, "requirer/0")
+    harness.update_relation_data(
+        relation_id,
+        "requirer",
+        {
+            "access_rules_file": "requirer-access_rules.json",
+        },
+    )
 
     return relation_id
 
@@ -771,7 +778,7 @@ def test_oathkeeper_info_ready_event_emitted_when_relation_created(harness: Harn
     with capture_events(harness.charm) as captured:
         _ = setup_oathkeeper_info_relation(harness)
 
-    assert any(isinstance(e, OathkeeperInfoRelationReadyEvent) for e in captured)
+    assert any(isinstance(e, OathkeeperInfoRelationChangedEvent) for e in captured)
 
 
 def test_oathkeeper_info_updated_on_relation_ready(harness: Harness) -> None:

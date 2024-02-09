@@ -37,7 +37,7 @@ Class SomeCharm(CharmBase):
 import logging
 from typing import Dict, Optional
 
-from ops.charm import CharmBase, RelationCreatedEvent
+from ops.charm import CharmBase, RelationChangedEvent
 from ops.framework import EventBase, EventSource, Object, ObjectEvents
 
 # The unique Charmhub library identifier, never change it
@@ -55,14 +55,14 @@ INTERFACE_NAME = "oathkeeper_info"
 logger = logging.getLogger(__name__)
 
 
-class OathkeeperInfoRelationReadyEvent(EventBase):
-    """Event to notify the charm that the relation is ready."""
+class OathkeeperInfoRelationChangedEvent(EventBase):
+    """Event to notify the charm that the relation data has changed."""
 
 
 class OathkeeperInfoProviderEvents(ObjectEvents):
     """Event descriptor for events raised by `OathkeeperInfoProvider`."""
 
-    ready = EventSource(OathkeeperInfoRelationReadyEvent)
+    data_changed = EventSource(OathkeeperInfoRelationChangedEvent)
 
 
 class OathkeeperInfoProvider(Object):
@@ -77,10 +77,10 @@ class OathkeeperInfoProvider(Object):
         self._relation_name = relation_name
 
         events = self._charm.on[relation_name]
-        self.framework.observe(events.relation_created, self._on_info_provider_relation_created)
+        self.framework.observe(events.relation_changed, self._on_info_provider_relation_changed)
 
-    def _on_info_provider_relation_created(self, event: RelationCreatedEvent) -> None:
-        self.on.ready.emit()
+    def _on_info_provider_relation_changed(self, event: RelationChangedEvent) -> None:
+        self.on.data_changed.emit()
 
     def send_info_relation_data(
         self,
