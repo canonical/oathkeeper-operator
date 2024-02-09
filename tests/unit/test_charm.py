@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 import yaml
+from capture_events import capture_events
+from charms.oathkeeper.v0.oathkeeper_info import OathkeeperInfoRelationReadyEvent
 from jinja2 import Template
 from ops.model import ActiveStatus, WaitingStatus
 from ops.pebble import ExecError
@@ -53,6 +55,13 @@ def setup_kratos_relation(harness: Harness) -> int:
             "sessions_endpoint": f"http://kratos-admin-url:80/{harness.model.name}-kratos/sessions/whoami",
         },
     )
+    return relation_id
+
+
+def setup_oathkeeper_info_relation(harness: Harness) -> int:
+    relation_id = harness.add_relation("oathkeeper-info", "requirer")
+    harness.add_relation_unit(relation_id, "requirer/0")
+
     return relation_id
 
 
@@ -218,7 +227,13 @@ def test_on_pebble_ready_correct_plan(harness: Harness) -> None:
                 "startup": "enabled",
                 "command": f"oathkeeper serve -c {CONFIG_FILE_PATH}",
             }
-        }
+        },
+        "checks": {
+            "alive": {
+                "override": "replace",
+                "http": {"url": "http://localhost:4456/health/alive"},
+            },
+        },
     }
     updated_plan = harness.get_container_pebble_plan(CONTAINER_NAME).to_dict()
     assert expected_plan == updated_plan
@@ -750,3 +765,45 @@ def test_forward_auth_config_updated_on_tls_set_up(
     harness.charm.cert_handler.on.cert_changed.emit()
 
     mocked_update_forward_auth.assert_called()
+
+
+def test_oathkeeper_info_ready_event_emitted_when_relation_created(harness: Harness) -> None:
+    with capture_events(harness.charm) as captured:
+        _ = setup_oathkeeper_info_relation(harness)
+
+    assert any(isinstance(e, OathkeeperInfoRelationReadyEvent) for e in captured)
+
+
+def test_oathkeeper_info_updated_on_relation_ready(harness: Harness) -> None:
+    harness.charm.info_provider.send_info_relation_data = mocked_handle = Mock(return_value=None)
+    _ = setup_oathkeeper_info_relation(harness)
+
+    mocked_handle.assert_called_with(
+        public_endpoint="http://oathkeeper.testing.svc.cluster.local:4456",
+        rules_configmap_name="access-rules",
+        configmaps_namespace="testing",
+    )
+
+
+def test_config_file_includes_oathkeeper_info_requirer_rules(
+    harness: Harness,
+    mocked_oathkeeper_configmap: MagicMock,
+    mocked_oathkeeper_requirer_info: MagicMock,
+) -> None:
+    harness.set_can_connect(CONTAINER_NAME, True)
+    harness.charm.on.oathkeeper_pebble_ready.emit(CONTAINER_NAME)
+    _ = setup_oathkeeper_info_relation(harness)
+
+    with open("templates/oathkeeper.yaml.j2", "r") as file:
+        template = Template(file.read())
+
+    expected_config = template.render(
+        access_rules=[
+            "requirer-access-rules.json",
+        ],
+    )
+
+    configmap = mocked_oathkeeper_configmap.update.call_args_list[-1][0][0]
+    container_config = configmap["oathkeeper.yaml"]
+
+    assert yaml.safe_load(container_config) == yaml.safe_load(expected_config)

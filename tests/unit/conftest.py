@@ -48,6 +48,7 @@ def mocked_oathkeeper_configmap(mocker: MockerFixture) -> MagicMock:
 @pytest.fixture(autouse=True)
 def mocked_access_rules_configmap(mocker: MockerFixture) -> MagicMock:
     mock = mocker.patch("charm.AccessRulesConfigMap", autospec=True)
+    mock.return_value.name = "access-rules"
     return mock.return_value
 
 
@@ -115,3 +116,12 @@ def mocked_update_forward_auth(mocker: MockerFixture) -> MagicMock:
         "charms.oathkeeper.v0.forward_auth.ForwardAuthProvider.update_forward_auth_config"
     )
     return mocked_update_forward_auth
+
+
+@pytest.fixture()
+def mocked_oathkeeper_requirer_info(mocker: MockerFixture) -> MagicMock:
+    mocked_oathkeeper_requirer_info = mocker.patch(
+        "charms.oathkeeper.v0.oathkeeper_info.OathkeeperInfoProvider.get_requirer_info"
+    )
+    mocked_oathkeeper_requirer_info.return_value = "requirer-access-rules.json"
+    return mocked_oathkeeper_requirer_info

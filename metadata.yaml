@@ -22,6 +22,10 @@ provides:
     interface: auth_proxy
   forward-auth:
     interface: forward_auth
+  oathkeeper-info:
+    interface: oathkeeper_info
+    description: |
+      Provides oathkeeper deployment info to a related application
 requires:
   kratos-endpoint-info:
     interface: kratos_endpoints

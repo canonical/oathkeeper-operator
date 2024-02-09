@@ -29,6 +29,7 @@ from charms.oathkeeper.v0.forward_auth import (
     ForwardAuthRelationRemovedEvent,
     InvalidForwardAuthConfigEvent,
 )
+from charms.oathkeeper.v0.oathkeeper_info import OathkeeperInfoProvider
 from charms.observability_libs.v0.cert_handler import CertChanged, CertHandler
 from charms.observability_libs.v0.kubernetes_service_patch import KubernetesServicePatch
 from charms.traefik_k8s.v2.ingress import (
@@ -111,6 +112,7 @@ class OathkeeperCharm(CharmBase):
             relation_name=self._forward_auth_relation_name,
             forward_auth_config=self._forward_auth_config,
         )
+        self.info_provider = OathkeeperInfoProvider(self)
 
         self.service_patcher = KubernetesServicePatch(
             self, [("oathkeeper-api", OATHKEEPER_API_PORT)]
@@ -158,6 +160,10 @@ class OathkeeperCharm(CharmBase):
         self.framework.observe(
             self.forward_auth.on.forward_auth_relation_removed,
             self._on_forward_auth_relation_removed,
+        )
+
+        self.framework.observe(
+            self.info_provider.on.ready, self._update_oathkeeper_info_relation_data
         )
 
         self.framework.observe(self.cert_handler.on.cert_changed, self._on_cert_changed)
@@ -231,9 +237,21 @@ class OathkeeperCharm(CharmBase):
         return service.is_running()
 
     @property
-    def _forward_auth_config(self) -> ForwardAuthConfig:
+    def _scheme(self) -> str:
         scheme = "https" if self._is_tls_ready() and not self.config["dev"] else "http"
-        decisions_url = f"{scheme}://{self.app.name}.{self.model.name}.svc.cluster.local:{OATHKEEPER_API_PORT}/decisions"
+        return scheme
+
+    @property
+    def _public_endpoint(self) -> str:
+        public_endpoint = (
+            self.ingress.url
+            or f"{self._scheme}://{self.app.name}.{self.model.name}.svc.cluster.local:{OATHKEEPER_API_PORT}"
+        )
+        return public_endpoint
+
+    @property
+    def _forward_auth_config(self) -> ForwardAuthConfig:
+        decisions_url = f"{self._scheme}://{self.app.name}.{self.model.name}.svc.cluster.local:{OATHKEEPER_API_PORT}/decisions"
         return ForwardAuthConfig(
             decisions_address=decisions_url,
             app_names=self.auth_proxy.get_app_names(),
@@ -257,6 +275,8 @@ class OathkeeperCharm(CharmBase):
         if cm_access_rules := self.access_rules_configmap.get():
             for key in cm_access_rules.keys():
                 repositories.append(f"{self._access_rules_dir_path}/{key}")
+        if admin_ui_access_rules_file := self.info_provider.get_requirer_info():
+            repositories.append(admin_ui_access_rules_file)
         return repositories
 
     def _render_conf_file(self) -> str:
@@ -291,6 +311,15 @@ class OathkeeperCharm(CharmBase):
             self.update_cert_configuration(
                 self.cert_handler.cert, self.cert_handler.key, self.cert_handler.ca
             )
+
+    def _update_oathkeeper_info_relation_data(self, event: HookEvent) -> None:
+        logger.info("Sending oathkeeper info")
+
+        self.info_provider.send_info_relation_data(
+            public_endpoint=self._public_endpoint,
+            rules_configmap_name=self.access_rules_configmap.name,
+            configmaps_namespace=self.model.name,
+        )
 
     def _get_kratos_endpoint_info(self, key: str) -> Optional[str]:
         if not self.model.relations[self._kratos_relation_name]:
@@ -388,6 +417,7 @@ class OathkeeperCharm(CharmBase):
         """Event Handler for pebble ready event."""
         self._patch_statefulset()
         self._handle_status_update_config(event)
+        self._update_oathkeeper_info_relation_data(event)
 
     def _on_config_changed(self, event: ConfigChangedEvent):
         self.forward_auth.update_forward_auth_config(self._forward_auth_config)
@@ -405,9 +435,13 @@ class OathkeeperCharm(CharmBase):
         if self.unit.is_leader():
             logger.info(f"This app's ingress URL: {event.url}")
 
+        self._update_oathkeeper_info_relation_data(event)
+
     def _on_ingress_revoked(self, event: IngressPerAppRevokedEvent) -> None:
         if self.unit.is_leader():
             logger.info("This app no longer has ingress")
+
+        self._update_oathkeeper_info_relation_data(event)
 
     def _on_cert_changed(self, event: CertChanged) -> None:
         if not self._container.can_connect():
