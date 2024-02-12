@@ -795,7 +795,7 @@ def test_oathkeeper_info_updated_on_relation_ready(harness: Harness) -> None:
 def test_config_file_includes_oathkeeper_info_requirer_rules(
     harness: Harness,
     mocked_oathkeeper_configmap: MagicMock,
-    mocked_oathkeeper_requirer_info: MagicMock,
+    mocked_oathkeeper_access_rules_list: MagicMock,
 ) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
     harness.charm.on.oathkeeper_pebble_ready.emit(CONTAINER_NAME)

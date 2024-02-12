@@ -119,9 +119,9 @@ def mocked_update_forward_auth(mocker: MockerFixture) -> MagicMock:
 
 
 @pytest.fixture()
-def mocked_oathkeeper_requirer_info(mocker: MockerFixture) -> MagicMock:
-    mocked_oathkeeper_requirer_info = mocker.patch(
-        "charms.oathkeeper.v0.oathkeeper_info.OathkeeperInfoProvider.get_requirer_info"
+def mocked_oathkeeper_access_rules_list(mocker: MockerFixture) -> MagicMock:
+    mocked_oathkeeper_access_rules_list = mocker.patch(
+        "charm.OathkeeperCharm._get_all_access_rules_repositories"
     )
-    mocked_oathkeeper_requirer_info.return_value = "requirer-access-rules.json"
-    return mocked_oathkeeper_requirer_info
+    mocked_oathkeeper_access_rules_list.return_value = ["requirer-access-rules.json"]
+    return mocked_oathkeeper_access_rules_list

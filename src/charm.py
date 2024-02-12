@@ -278,8 +278,6 @@ class OathkeeperCharm(CharmBase):
         if cm_access_rules := self.access_rules_configmap.get():
             for key in cm_access_rules.keys():
                 repositories.append(f"{self._access_rules_dir_path}/{key}")
-        if admin_ui_access_rules_file := self.info_provider.get_requirer_info():
-            repositories.append(admin_ui_access_rules_file)
         return repositories
 
     def _render_conf_file(self) -> str:
