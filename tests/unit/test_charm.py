@@ -211,6 +211,12 @@ def test_on_pebble_ready_correct_plan(harness: Harness) -> None:
     harness.charm.on.oathkeeper_pebble_ready.emit(container)
 
     expected_plan = {
+        "checks": {
+            "alive": {
+                "http": {"url": 'http://localhost:4456/health/alive'},
+                "override": "replace",
+            },
+        },
         "services": {
             SERVICE_NAME: {
                 "override": "replace",
