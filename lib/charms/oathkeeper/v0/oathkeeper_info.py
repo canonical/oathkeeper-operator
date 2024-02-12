@@ -117,7 +117,7 @@ class OathkeeperInfoProvider(Object):
             logger.info("No relation data available.")
             return None
 
-        return data["access_rules_file"]
+        return data.get("access_rules_file")
 
 
 class OathkeeperInfoRelationError(Exception):
