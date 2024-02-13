@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, Mock
 import pytest
 import yaml
 from capture_events import capture_events
-from charms.oathkeeper.v0.oathkeeper_info import OathkeeperInfoRelationChangedEvent
+from charms.oathkeeper.v0.oathkeeper_info import OathkeeperInfoRelationCreatedEvent
 from jinja2 import Template
 from ops.model import ActiveStatus, WaitingStatus
 from ops.pebble import ExecError
@@ -775,13 +775,15 @@ def test_forward_auth_config_updated_on_tls_set_up(
 
 
 def test_oathkeeper_info_ready_event_emitted_when_relation_created(harness: Harness) -> None:
+    harness.set_can_connect(CONTAINER_NAME, True)
     with capture_events(harness.charm) as captured:
         _ = setup_oathkeeper_info_relation(harness)
 
-    assert any(isinstance(e, OathkeeperInfoRelationChangedEvent) for e in captured)
+    assert any(isinstance(e, OathkeeperInfoRelationCreatedEvent) for e in captured)
 
 
 def test_oathkeeper_info_updated_on_relation_ready(harness: Harness) -> None:
+    harness.set_can_connect(CONTAINER_NAME, True)
     harness.charm.info_provider.send_info_relation_data = mocked_handle = Mock(return_value=None)
     _ = setup_oathkeeper_info_relation(harness)
 

@@ -31,7 +31,7 @@ from charms.oathkeeper.v0.forward_auth import (
 )
 from charms.oathkeeper.v0.oathkeeper_info import (
     OathkeeperInfoProvider,
-    OathkeeperInfoRelationChangedEvent,
+    OathkeeperInfoRelationCreatedEvent,
 )
 from charms.observability_libs.v0.cert_handler import CertChanged, CertHandler
 from charms.observability_libs.v0.kubernetes_service_patch import KubernetesServicePatch
@@ -166,7 +166,7 @@ class OathkeeperCharm(CharmBase):
         )
 
         self.framework.observe(
-            self.info_provider.on.data_changed, self._on_oathkeeper_info_relation_changed
+            self.info_provider.on.ready, self._on_oathkeeper_info_relation_ready
         )
 
         self.framework.observe(self.cert_handler.on.cert_changed, self._on_cert_changed)
@@ -432,9 +432,15 @@ class OathkeeperCharm(CharmBase):
     def _on_kratos_relation_changed(self, event: RelationChangedEvent) -> None:
         self._handle_status_update_config(event)
 
-    def _on_oathkeeper_info_relation_changed(
-        self, event: OathkeeperInfoRelationChangedEvent
+    def _on_oathkeeper_info_relation_ready(
+        self, event: OathkeeperInfoRelationCreatedEvent
     ) -> None:
+        if not self._container.exists("/etc/config/access-rules/admin_ui_rules.json"):
+            # Create an empty configMap key for admin ui
+            # to make sure it will be enlisted in oathkeeper config
+            patch = {"data": {"admin_ui_rules.json": ""}}
+            self.access_rules_configmap.patch(patch=patch, cm_name="access-rules")
+
         self._update_oathkeeper_info_relation_data(event)
         self._handle_status_update_config(event)
 
