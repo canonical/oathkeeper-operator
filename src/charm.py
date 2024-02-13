@@ -52,6 +52,7 @@ from ops.charm import (
     PebbleReadyEvent,
     RelationChangedEvent,
     RemoveEvent,
+    UpdateStatusEvent,
 )
 from ops.main import main
 from ops.model import (
@@ -145,6 +146,7 @@ class OathkeeperCharm(CharmBase):
         self.framework.observe(self.on.oathkeeper_pebble_ready, self._on_oathkeeper_pebble_ready)
         self.framework.observe(self.on.install, self._on_install)
         self.framework.observe(self.on.config_changed, self._on_config_changed)
+        self.framework.observe(self.on.update_status, self._on_update_status)
         self.framework.observe(self.on.remove, self._on_remove)
 
         self.framework.observe(
@@ -418,10 +420,12 @@ class OathkeeperCharm(CharmBase):
         """Event Handler for pebble ready event."""
         self._patch_statefulset()
         self._handle_status_update_config(event)
-        self._update_oathkeeper_info_relation_data(event)
 
     def _on_config_changed(self, event: ConfigChangedEvent):
         self.forward_auth.update_forward_auth_config(self._forward_auth_config)
+
+    def _on_update_status(self, event: UpdateStatusEvent) -> None:
+        self._update_oathkeeper_info_relation_data(event)
 
     def _on_remove(self, event: RemoveEvent) -> None:
         if not self.unit.is_leader():
@@ -435,6 +439,8 @@ class OathkeeperCharm(CharmBase):
     def _on_oathkeeper_info_relation_ready(
         self, event: OathkeeperInfoRelationCreatedEvent
     ) -> None:
+        self._update_oathkeeper_info_relation_data(event)
+
         if not self._container.can_connect():
             logger.info(f"Cannot connect to Oathkeeper container. Deferring the {event} event.")
             event.defer()
@@ -446,7 +452,6 @@ class OathkeeperCharm(CharmBase):
             patch = {"data": {"admin_ui_rules.json": ""}}
             self.access_rules_configmap.patch(patch=patch, cm_name="access-rules")
 
-        self._update_oathkeeper_info_relation_data(event)
         self._handle_status_update_config(event)
 
     def _on_ingress_ready(self, event: IngressPerAppReadyEvent) -> None:
