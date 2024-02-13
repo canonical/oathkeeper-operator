@@ -435,6 +435,11 @@ class OathkeeperCharm(CharmBase):
     def _on_oathkeeper_info_relation_ready(
         self, event: OathkeeperInfoRelationCreatedEvent
     ) -> None:
+        if not self._container.can_connect():
+            logger.info(f"Cannot connect to Oathkeeper container. Deferring the {event} event.")
+            event.defer()
+            return
+
         if not self._container.exists("/etc/config/access-rules/admin_ui_rules.json"):
             # Create an empty configMap key for admin ui
             # to make sure it will be enlisted in oathkeeper config
