@@ -78,14 +78,14 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 4
+LIBPATCH = 5
 
 RELATION_NAME = "auth-proxy"
 INTERFACE_NAME = "auth_proxy"
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_HEADERS = ["X-User"]
+ALLOWED_HEADERS = ["X-User", "X-Email", "X-Name"]
 
 url_regex = re.compile(
     r"(^http://)|(^https://)"  # http:// or https://

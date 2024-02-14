@@ -75,3 +75,5 @@ mutators:
     config:
       headers:
         X-User: {% raw %}"{{ print .Subject }}"{% endraw %}
+        X-Email: {% raw %}"{{ print .Extra.identity.traits.email }}"{% endraw %}
+        X-Name: {% raw %}"{{ print .Extra.identity.traits.name }}"{% endraw %}
