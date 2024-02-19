@@ -13,10 +13,7 @@ import subprocess
 from base64 import b64encode
 from typing import Dict, List, Optional
 
-from charms.kratos.v0.kratos_endpoints import (
-    KratosEndpointsRelationDataMissingError,
-    KratosEndpointsRequirer,
-)
+from charms.kratos.v0.kratos_info import KratosInfoRelationDataMissingError, KratosInfoRequirer
 from charms.oathkeeper.v0.auth_proxy import (
     AuthProxyConfigChangedEvent,
     AuthProxyConfigRemovedEvent,
@@ -98,7 +95,7 @@ class OathkeeperCharm(CharmBase):
         self._access_rules_config_map_name = "access-rules"
         self._sans_dns = f"{self.app.name}.{self.model.name}.svc.cluster.local"
 
-        self._kratos_relation_name = "kratos-endpoint-info"
+        self._kratos_relation_name = "kratos-info"
         self._auth_proxy_relation_name = "auth-proxy"
         self._forward_auth_relation_name = "forward-auth"
 
@@ -122,9 +119,7 @@ class OathkeeperCharm(CharmBase):
             self, [("oathkeeper-api", OATHKEEPER_API_PORT)]
         )
 
-        self.kratos_endpoints = KratosEndpointsRequirer(
-            self, relation_name=self._kratos_relation_name
-        )
+        self.kratos_info = KratosInfoRequirer(self, relation_name=self._kratos_relation_name)
 
         self.client = Client(field_manager=self.app.name, namespace=self.model.name)
         self.oathkeeper_configmap = OathkeeperConfigMap(self.client, self)
@@ -263,14 +258,6 @@ class OathkeeperCharm(CharmBase):
             headers=self.auth_proxy.get_headers(),
         )
 
-    @property
-    def _kratos_login_url(self) -> Optional[str]:
-        return self._get_kratos_endpoint_info("login_browser_endpoint")
-
-    @property
-    def _kratos_session_url(self) -> Optional[str]:
-        return self._get_kratos_endpoint_info("sessions_endpoint")
-
     def _is_tls_ready(self) -> bool:
         """Returns True if the workload is ready to operate in TLS mode."""
         return self.cert_handler.enabled
@@ -287,9 +274,10 @@ class OathkeeperCharm(CharmBase):
         with open("templates/oathkeeper.yaml.j2", "r") as file:
             template = Template(file.read())
 
+        kratos_endpoints = self._get_kratos_info()
         rendered = template.render(
-            kratos_session_url=self._kratos_session_url,
-            kratos_login_url=self._kratos_login_url,
+            kratos_session_url=kratos_endpoints.get("sessions_endpoint", None),
+            kratos_login_url=kratos_endpoints.get("login_browser_endpoint", None),
             access_rules=self._get_all_access_rules_repositories(),
         )
         return rendered
@@ -324,17 +312,14 @@ class OathkeeperCharm(CharmBase):
             configmaps_namespace=self.model.name,
         )
 
-    def _get_kratos_endpoint_info(self, key: str) -> Optional[str]:
-        if not self.model.relations[self._kratos_relation_name]:
-            logger.info("Kratos relation not found")
-            return
-
-        try:
-            kratos_endpoints = self.kratos_endpoints.get_kratos_endpoints()
-            return kratos_endpoints[key]
-        except KratosEndpointsRelationDataMissingError:
-            logger.info("No kratos-endpoint-info relation data found")
-            return
+    def _get_kratos_info(self) -> Dict:
+        kratos_info = {}
+        if self.kratos_info.is_ready():
+            try:
+                kratos_info = self.kratos_info.get_kratos_info()
+            except KratosInfoRelationDataMissingError:
+                logger.info("No kratos-info relation data found")
+        return kratos_info
 
     def _auth_proxy_relation_peer_data_key(self, relation_id: int) -> str:
         return f"auth_proxy_{relation_id}"
