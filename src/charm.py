@@ -95,7 +95,7 @@ class OathkeeperCharm(CharmBase):
         self._access_rules_config_map_name = "access-rules"
         self._sans_dns = f"{self.app.name}.{self.model.name}.svc.cluster.local"
 
-        self._kratos_relation_name = "kratos-endpoint-info"
+        self._kratos_relation_name = "kratos-info"
         self._auth_proxy_relation_name = "auth-proxy"
         self._forward_auth_relation_name = "forward-auth"
 

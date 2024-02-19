@@ -43,7 +43,7 @@ def setup_certificates_relation(harness: Harness) -> int:
 
 
 def setup_kratos_relation(harness: Harness) -> int:
-    relation_id = harness.add_relation("kratos-endpoint-info", "kratos")
+    relation_id = harness.add_relation("kratos-info", "kratos")
     harness.add_relation_unit(relation_id, "kratos/0")
     harness.update_relation_data(
         relation_id,

@@ -27,7 +27,7 @@ provides:
     description: |
       Provides oathkeeper deployment info to a related application
 requires:
-  kratos-endpoint-info:
+  kratos-info:
     interface: kratos_info
     limit: 1
   ingress:
