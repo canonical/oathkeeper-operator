@@ -75,5 +75,9 @@ mutators:
     config:
       headers:
         X-User: {% raw %}"{{ print .Subject }}"{% endraw %}
+        {%- if "X-Email" in headers %}
         X-Email: {% raw %}"{{ print .Extra.identity.traits.email }}"{% endraw %}
+        {%- endif %}
+        {%- if "X-Name" in headers %}
         X-Name: {% raw %}"{{ print .Extra.identity.traits.name }}"{% endraw %}
+        {%- endif %}

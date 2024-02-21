@@ -221,6 +221,23 @@ def test_update_container_config_with_kratos_relation(
     assert yaml.safe_load(expected_config) == yaml.safe_load(config)
 
 
+def test_container_config_updated_with_custom_headers(
+    harness: Harness, mocked_oathkeeper_configmap: MagicMock, mocked_auth_proxy_headers: MagicMock
+) -> None:
+    harness.set_can_connect(CONTAINER_NAME, True)
+
+    harness.charm.on.oathkeeper_pebble_ready.emit(CONTAINER_NAME)
+
+    with open("templates/oathkeeper.yaml.j2", "r") as file:
+        template = Template(file.read())
+
+    expected_config = template.render(headers=["X-Name", "X-Email"])
+
+    configmap = mocked_oathkeeper_configmap.update.call_args_list[-1][0][0]
+    config = configmap["oathkeeper.yaml"]
+    assert yaml.safe_load(expected_config) == yaml.safe_load(config)
+
+
 def test_on_pebble_ready_correct_plan(harness: Harness) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
     container = harness.model.unit.get_container(CONTAINER_NAME)
