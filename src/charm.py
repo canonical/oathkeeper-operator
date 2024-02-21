@@ -279,6 +279,7 @@ class OathkeeperCharm(CharmBase):
             kratos_session_url=kratos_endpoints.get("sessions_endpoint", None),
             kratos_login_url=kratos_endpoints.get("login_browser_endpoint", None),
             access_rules=self._get_all_access_rules_repositories(),
+            headers=self.auth_proxy.get_headers(),
         )
         return rendered
 

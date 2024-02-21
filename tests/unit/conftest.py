@@ -125,3 +125,12 @@ def mocked_oathkeeper_access_rules_list(mocker: MockerFixture) -> MagicMock:
     )
     mocked_oathkeeper_access_rules_list.return_value = ["requirer-access-rules.json"]
     return mocked_oathkeeper_access_rules_list
+
+
+@pytest.fixture()
+def mocked_auth_proxy_headers(mocker: MockerFixture) -> MagicMock:
+    mocked_auth_proxy_headers = mocker.patch(
+        "charms.oathkeeper.v0.auth_proxy.AuthProxyProvider.get_headers",
+        return_value=["X-Name", "X-Email"],
+    )
+    return mocked_auth_proxy_headers
