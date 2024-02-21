@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 APP_NAME = METADATA["name"]
 CA_CHARM = "self-signed-certificates"
+TRAEFIK = "traefik-k8s"
+AUTH_PROXY_REQUIRER = "auth-proxy-requirer"
 
 
 async def get_unit_address(ops_test: OpsTest, app_name: str, unit_num: int) -> str:
@@ -28,6 +30,7 @@ async def get_app_address(ops_test: OpsTest, app_name: str) -> str:
     return status["applications"][app_name]["public-address"]
 
 
+@pytest.mark.skip_if_deployed
 @pytest.mark.abort_on_fail
 async def test_build_and_deploy(ops_test: OpsTest) -> None:
     """Build and deploy oathkeeper."""
@@ -51,6 +54,37 @@ async def test_build_and_deploy(ops_test: OpsTest) -> None:
     assert ops_test.model.applications[APP_NAME].units[0].workload_status == "active"
 
 
+@pytest.mark.abort_on_fail
+async def test_auth_proxy_relation(ops_test: OpsTest, copy_libraries_into_tester_charm) -> None:
+    """Ensure that oathkeeper is able to provide auth-proxy relation."""
+    requirer_charm_path = Path(f"tests/integration/{AUTH_PROXY_REQUIRER}").absolute()
+    requirer_charm = await ops_test.build_charm(requirer_charm_path, verbosity="debug")
+
+    await ops_test.model.deploy(
+        TRAEFIK,
+        channel="latest/edge",
+        trust=True,
+    )
+
+    await ops_test.model.deploy(
+        application_name=AUTH_PROXY_REQUIRER,
+        entity_url=requirer_charm,
+        resources={"oci-image": "kennethreitz/httpbin"},
+        series="jammy",
+        trust=True,
+    )
+
+    await ops_test.model.integrate(f"{AUTH_PROXY_REQUIRER}:ingress", TRAEFIK)
+    await ops_test.model.integrate(f"{AUTH_PROXY_REQUIRER}:auth-proxy", APP_NAME)
+
+    await ops_test.model.wait_for_idle(
+        apps=[APP_NAME, AUTH_PROXY_REQUIRER, TRAEFIK],
+        status="active",
+        raise_on_blocked=True,
+        timeout=1000,
+    )
+
+
 async def test_oathkeeper_scale_up(ops_test: OpsTest) -> None:
     """Check that oathkeeper works after it is scaled up."""
     app = ops_test.model.applications[APP_NAME]
@@ -66,6 +100,22 @@ async def test_oathkeeper_scale_up(ops_test: OpsTest) -> None:
 
     assert ops_test.model.applications[APP_NAME].units[0].workload_status == "active"
     assert ops_test.model.applications[APP_NAME].units[1].workload_status == "active"
+
+
+async def test_oathkeeper_scale_down(ops_test: OpsTest) -> None:
+    """Check that oathkeeper works after it is scaled down."""
+    app = ops_test.model.applications[APP_NAME]
+
+    await app.scale(1)
+
+    await ops_test.model.wait_for_idle(
+        apps=[APP_NAME],
+        status="active",
+        raise_on_blocked=True,
+        timeout=1000,
+    )
+
+    assert ops_test.model.applications[APP_NAME].units[0].workload_status == "active"
 
 
 async def test_list_rules(ops_test: OpsTest) -> None:
