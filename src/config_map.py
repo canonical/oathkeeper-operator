@@ -94,7 +94,10 @@ class ConfigMapBase:
             return
 
         for key in keys:
-            cm.data.pop(key)
+            if key in cm.data.keys():
+                cm.data.pop(key)
+            else:
+                logger.info(f"{key} not found in the ConfigMap")
 
         self._client.replace(cm)
 

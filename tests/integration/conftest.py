@@ -6,6 +6,7 @@ import shutil
 
 import pytest
 from lightkube import Client, KubeConfig
+from pytest_operator.plugin import OpsTest
 
 KUBECONFIG = os.environ.get("TESTING_KUBECONFIG", "~/.kube/config")
 AUTH_PROXY_REQUIRER = "auth-proxy-requirer"
@@ -14,6 +15,12 @@ AUTH_PROXY_REQUIRER = "auth-proxy-requirer"
 @pytest.fixture(scope="module")
 def client() -> Client:
     return Client(config=KubeConfig.from_file(KUBECONFIG))
+
+
+@pytest.fixture(scope="module")
+def lightkube_client(ops_test: OpsTest) -> Client:
+    lightkube_client = Client(field_manager="oathkeeper", namespace=ops_test.model.name)
+    return lightkube_client
 
 
 @pytest.fixture(scope="module")
