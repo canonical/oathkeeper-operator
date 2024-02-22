@@ -238,10 +238,8 @@ async def test_oathkeeper_scale_up(ops_test: OpsTest) -> None:
         status="active",
         raise_on_blocked=True,
         timeout=1000,
+        wait_for_active=True,
     )
-
-    assert ops_test.model.applications[APP_NAME].units[0].workload_status == "active"
-    assert ops_test.model.applications[APP_NAME].units[1].workload_status == "active"
 
 
 async def test_oathkeeper_scale_down(ops_test: OpsTest) -> None:
@@ -255,9 +253,8 @@ async def test_oathkeeper_scale_down(ops_test: OpsTest) -> None:
         status="active",
         raise_on_blocked=True,
         timeout=1000,
+        wait_for_active=True,
     )
-
-    assert ops_test.model.applications[APP_NAME].units[0].workload_status == "active"
 
 
 async def test_remove_forward_auth_integration(ops_test: OpsTest) -> None:
