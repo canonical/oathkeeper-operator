@@ -33,6 +33,7 @@ jobs:
           channel: 1.28-strict/stable
           juju-channel: 3.1
           bootstrap-options: '--agent-version=3.1.0'
+          microk8s-addons: "dns hostpath-storage metallb:10.64.140.43-10.64.140.49"
 
       - name: Run integration tests
         # set a predictable model name so it can be consumed by charm-logdump-action
