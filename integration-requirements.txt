@@ -1,0 +1,5 @@
+protobuf~=3.20.1
+pytest
+juju
+pytest-operator==0.31.1
+-r requirements.txt

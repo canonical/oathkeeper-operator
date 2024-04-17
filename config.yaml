@@ -1,0 +1,7 @@
+options:
+  dev:
+    description: |
+      Run Oathkeeper in dev mode. This option is needed if no internal ingress is configured and https is not set up.
+      This should only be used for development purposes.
+    type: boolean
+    default: False
