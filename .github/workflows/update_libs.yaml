@@ -12,8 +12,6 @@ on:
     secrets:
       CHARMCRAFT_CREDENTIALS:
         required: true
-      PAT_TOKEN:
-        required: true
   workflow_dispatch:
     inputs:
       charmcraft_channel:
@@ -42,7 +40,7 @@ jobs:
         id: create-pull-request
         uses: canonical/create-pull-request@main
         with:
-          github-token: ${{ secrets.PAT_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: Update charm libs
           branch-name: 'automated-update-charm-libs'
           title: (Automated) Update Charm Libs
