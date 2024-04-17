@@ -81,7 +81,7 @@ logger = logging.getLogger(__name__)
 class OathkeeperCharm(CharmBase):
     """Charmed Ory Oathkeeper."""
 
-    def __init__(self, *args):
+    def __init__(self, *args) -> None:
         super().__init__(*args)
 
         self._container_name = "oathkeeper"
@@ -407,7 +407,7 @@ class OathkeeperCharm(CharmBase):
         self._patch_statefulset()
         self._handle_status_update_config(event)
 
-    def _on_config_changed(self, event: ConfigChangedEvent):
+    def _on_config_changed(self, event: ConfigChangedEvent) -> None:
         self.forward_auth.update_forward_auth_config(self._forward_auth_config)
 
     def _on_update_status(self, event: UpdateStatusEvent) -> None:
