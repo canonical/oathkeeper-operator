@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class OathkeeperCLI:
     """Helper object for running Oathkeeper CLI commands."""
 
-    def __init__(self, oathkeeper_api_url: str, container: Container):
+    def __init__(self, oathkeeper_api_url: str, container: Container) -> None:
         self.oathkeeper_api_url = oathkeeper_api_url
         self.container = container
 

@@ -47,11 +47,11 @@ class ConfigMapBase:
         ConfigMapManager.register(self)
 
     @property
-    def namespace(self):
+    def namespace(self) -> str:
         """The namespace of the ConfigMap."""
         return self._charm.model.name
 
-    def create(self):
+    def create(self) -> None:
         """Create the configMap."""
         try:
             self._client.get(ConfigMap, self.name, namespace=self.namespace)
@@ -73,7 +73,7 @@ class ConfigMapBase:
         )
         self._client.create(cm)
 
-    def update(self, data: Dict):
+    def update(self, data: Dict) -> None:
         """Update the configMap."""
         try:
             cm = self._client.get(ConfigMap, self.name, namespace=self.namespace)
@@ -82,11 +82,11 @@ class ConfigMapBase:
         cm.data = data
         self._client.replace(cm)
 
-    def patch(self, patch: Dict, cm_name: str):
+    def patch(self, patch: Dict, cm_name: str) -> None:
         """Patch the configMap."""
         self._client.patch(ConfigMap, name=cm_name, namespace=self.namespace, obj=patch)
 
-    def pop(self, keys: List[str]):
+    def pop(self, keys: List[str]) -> None:
         """Pop data from the configMap."""
         try:
             cm = self._client.get(ConfigMap, self.name, namespace=self.namespace)
@@ -101,7 +101,7 @@ class ConfigMapBase:
 
         self._client.replace(cm)
 
-    def get(self):
+    def get(self) -> Dict[str, str]:
         """Get the configMap."""
         try:
             cm = self._client.get(ConfigMap, self.name, namespace=self.namespace)
@@ -109,7 +109,7 @@ class ConfigMapBase:
             return {}
         return cm.data
 
-    def delete(self):
+    def delete(self) -> None:
         """Delete the configMap."""
         try:
             self._client.delete(ConfigMap, self.name, namespace=self.namespace)
@@ -131,11 +131,11 @@ class AccessRulesConfigMap(ConfigMapBase):
         super().__init__("access-rules", client, charm)
 
 
-def create_all():
+def create_all() -> None:
     """Create all the register configMaps."""
     ConfigMapManager.create_all()
 
 
-def delete_all():
+def delete_all() -> None:
     """Delete all the register configMaps."""
     ConfigMapManager.delete_all()

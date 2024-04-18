@@ -78,7 +78,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 5
+LIBPATCH = 6
 
 RELATION_NAME = "auth-proxy"
 INTERFACE_NAME = "auth_proxy"
@@ -298,7 +298,7 @@ class AuthProxyProvider(AuthProxyRelation):
 
     on = AuthProxyProviderEvents()
 
-    def __init__(self, charm: CharmBase, relation_name: str = RELATION_NAME):
+    def __init__(self, charm: CharmBase, relation_name: str = RELATION_NAME) -> None:
         super().__init__(charm, relation_name)
 
         self._charm = charm
@@ -374,7 +374,7 @@ class AuthProxyProvider(AuthProxyRelation):
 class InvalidAuthProxyConfigEvent(EventBase):
     """Event to notify the charm that the auth proxy configuration is invalid."""
 
-    def __init__(self, handle: Handle, error: str):
+    def __init__(self, handle: Handle, error: str) -> None:
         super().__init__(handle)
         self.error = error
 

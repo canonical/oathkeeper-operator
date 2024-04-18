@@ -1,7 +1,7 @@
 - [ ] I have signed the [CLA](http://www.ubuntu.com/legal/contributors/).
 - [ ] I am following the [CONTRIBUTING](../CONTRIBUTING.md) guidelines.
 
-<!-- For any questions, ping the @canonical/identity team or post a message in IAM [Mattermost](https://chat.charmhub.io/charmhub/channels/iam-platform) channel. -->
+<!-- For any questions, ping the @canonical/identity team or post a message in the Identity [Matrix](https://matrix.to/#/!nRbdoDYxdQndEfzlJi:ubuntu.com?via=ubuntu.com) channel. -->
 
 ---
 

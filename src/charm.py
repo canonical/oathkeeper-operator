@@ -81,7 +81,7 @@ logger = logging.getLogger(__name__)
 class OathkeeperCharm(CharmBase):
     """Charmed Ory Oathkeeper."""
 
-    def __init__(self, *args):
+    def __init__(self, *args) -> None:
         super().__init__(*args)
 
         self._container_name = "oathkeeper"
@@ -115,11 +115,11 @@ class OathkeeperCharm(CharmBase):
         )
         self.info_provider = OathkeeperInfoProvider(self)
 
-        self.service_patcher = KubernetesServicePatch(
+        self._service_patcher = KubernetesServicePatch(
             self, [("oathkeeper-api", OATHKEEPER_API_PORT)]
         )
 
-        self.kratos_info = KratosInfoRequirer(self, relation_name=self._kratos_relation_name)
+        self._kratos_info = KratosInfoRequirer(self, relation_name=self._kratos_relation_name)
 
         self.client = Client(field_manager=self.app.name, namespace=self.model.name)
         self.oathkeeper_configmap = OathkeeperConfigMap(self.client, self)
@@ -130,7 +130,7 @@ class OathkeeperCharm(CharmBase):
             self._container,
         )
 
-        self.ingress = IngressPerAppRequirer(
+        self._ingress = IngressPerAppRequirer(
             self,
             relation_name="ingress",
             port=OATHKEEPER_API_PORT,
@@ -174,8 +174,8 @@ class OathkeeperCharm(CharmBase):
         self.framework.observe(
             self.on[self._kratos_relation_name].relation_changed, self._on_kratos_relation_changed
         )
-        self.framework.observe(self.ingress.on.ready, self._on_ingress_ready)
-        self.framework.observe(self.ingress.on.revoked, self._on_ingress_revoked)
+        self.framework.observe(self._ingress.on.ready, self._on_ingress_ready)
+        self.framework.observe(self._ingress.on.revoked, self._on_ingress_revoked)
 
     @property
     def _oathkeeper_layer(self) -> Layer:
@@ -211,9 +211,7 @@ class OathkeeperCharm(CharmBase):
                     "summary": "Oathkeeper Operator layer",
                     "command": f"oathkeeper serve -c {self._oathkeeper_config_file_path}",
                     "startup": "enabled",
-                    "environment": {
-                        **extra_env,
-                    },
+                    "environment": extra_env,
                 }
             },
             "checks": {
@@ -244,7 +242,7 @@ class OathkeeperCharm(CharmBase):
     @property
     def _public_endpoint(self) -> str:
         public_endpoint = (
-            self.ingress.url
+            self._ingress.url
             or f"{self._scheme}://{self.app.name}.{self.model.name}.svc.cluster.local:{OATHKEEPER_API_PORT}"
         )
         return public_endpoint
@@ -263,9 +261,9 @@ class OathkeeperCharm(CharmBase):
         return self.cert_handler.enabled
 
     def _get_all_access_rules_repositories(self) -> Optional[List]:
-        repositories = list()
+        repositories = []
         if cm_access_rules := self.access_rules_configmap.get():
-            for key in cm_access_rules.keys():
+            for key in cm_access_rules:
                 repositories.append(f"{self._access_rules_dir_path}/{key}")
         return repositories
 
@@ -315,9 +313,9 @@ class OathkeeperCharm(CharmBase):
 
     def _get_kratos_info(self) -> Dict:
         kratos_info = {}
-        if self.kratos_info.is_ready():
+        if self._kratos_info.is_ready():
             try:
-                kratos_info = self.kratos_info.get_kratos_info()
+                kratos_info = self._kratos_info.get_kratos_info()
             except KratosInfoRelationDataMissingError:
                 logger.info("No kratos-info relation data found")
         return kratos_info
@@ -332,22 +330,22 @@ class OathkeeperCharm(CharmBase):
 
     def _set_peer_data(self, key: str, data: Dict) -> None:
         """Put information into the peer data bucket."""
-        if not (peers := self._peers):
+        if not self._peers:
             return
-        peers.data[self.app][key] = json.dumps(data)
+        self._peers.data[self.app][key] = json.dumps(data)
 
     def _get_peer_data(self, key: str) -> Dict:
         """Retrieve information from the peer data bucket."""
-        if not (peers := self._peers):
+        if not self._peers:
             return {}
-        data = peers.data[self.app].get(key, "")
+        data = self._peers.data[self.app].get(key, "")
         return json.loads(data) if data else {}
 
     def _pop_peer_data(self, key: str) -> Dict:
         """Retrieve and remove information from the peer data bucket."""
-        if not (peers := self._peers):
+        if not self._peers:
             return {}
-        data = peers.data[self.app].pop(key, "")
+        data = self._peers.data[self.app].pop(key, "")
         return json.loads(data) if data else {}
 
     def _set_auth_proxy_relation_peer_data(self, relation_id: int, data: Dict) -> None:
@@ -396,6 +394,7 @@ class OathkeeperCharm(CharmBase):
         self.client.patch(StatefulSet, name=self._name, namespace=self.model.name, obj=patch)
 
     def _on_install(self, event: InstallEvent) -> None:
+        """Handle install event."""
         if not self.unit.is_leader():
             return
 
@@ -407,13 +406,16 @@ class OathkeeperCharm(CharmBase):
         self._patch_statefulset()
         self._handle_status_update_config(event)
 
-    def _on_config_changed(self, event: ConfigChangedEvent):
+    def _on_config_changed(self, event: ConfigChangedEvent) -> None:
+        """Handle config-changed event."""
         self.forward_auth.update_forward_auth_config(self._forward_auth_config)
 
     def _on_update_status(self, event: UpdateStatusEvent) -> None:
+        """Handle update-status event."""
         self._update_oathkeeper_info_relation_data(event)
 
     def _on_remove(self, event: RemoveEvent) -> None:
+        """Handle remove event."""
         if not self.unit.is_leader():
             return
 
@@ -585,7 +587,7 @@ class OathkeeperCharm(CharmBase):
             event.defer()
             return
 
-        access_rules_filenames = list()
+        access_rules_filenames = []
         for rule_type in ("allow", "deny"):
             rules = self._render_access_rules(
                 rule_type=rule_type,
@@ -635,7 +637,7 @@ class OathkeeperCharm(CharmBase):
         relation_app_name: str,
     ) -> Optional[List[Dict]]:
         """Render access rules from a template."""
-        rules = list()
+        rules = []
 
         for url_index, url in enumerate(protected_urls):
             # Parse url
