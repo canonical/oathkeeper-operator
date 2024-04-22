@@ -2,6 +2,12 @@
 # See LICENSE file for licensing details.
 
 name: oathkeeper
+display-name: Oathkeeper
+docs: https://discourse.charmhub.io/t/13972
+source: https://github.com/canonical/oathkeeper-operator
+issues: https://github.com/canonical/oathkeeper-operator/issues
+website:
+  - https://discourse.charmhub.io/t/13972
 description: |
   Charmed Ory Oathkeeper
 summary: |
