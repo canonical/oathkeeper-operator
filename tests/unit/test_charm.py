@@ -394,7 +394,7 @@ def test_config_file_updated_with_access_rules_locations(
     harness.set_can_connect(CONTAINER_NAME, True)
     setup_peer_relation(harness)
 
-    relation_id, app_name = setup_auth_proxy_relation(harness)
+    _, app_name = setup_auth_proxy_relation(harness)
 
     with open("templates/oathkeeper.yaml.j2", "r") as file:
         template = Template(file.read())
@@ -422,12 +422,10 @@ def test_config_file_updated_when_multiple_auth_proxy_relations(
 ) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
 
-    peer_relation_id, _ = setup_peer_relation(harness)
+    setup_peer_relation(harness)
 
-    requirer_relation_id, requirer_app_name = setup_auth_proxy_relation(harness)
-    other_requirer_relation_id, other_requirer_app_name = setup_auth_proxy_relation(
-        harness, app_name="other-requirer"
-    )
+    _, requirer_app_name = setup_auth_proxy_relation(harness)
+    _, other_requirer_app_name = setup_auth_proxy_relation(harness, app_name="other-requirer")
 
     with open("templates/oathkeeper.yaml.j2", "r") as file:
         template = Template(file.read())
@@ -456,7 +454,7 @@ def test_allow_access_rules_rendering(
     harness.set_can_connect(CONTAINER_NAME, True)
     setup_peer_relation(harness)
 
-    relation_id, app_name = setup_auth_proxy_relation(harness)
+    _, app_name = setup_auth_proxy_relation(harness)
 
     expected_allow_rules = [
         {
@@ -496,7 +494,7 @@ def test_allow_access_rules_not_rendered_when_no_allowed_endpoints_provided(
     harness.set_can_connect(CONTAINER_NAME, True)
     setup_peer_relation(harness)
 
-    relation_id, app_name = setup_auth_proxy_relation_without_allowed_endpoints(harness)
+    _, app_name = setup_auth_proxy_relation_without_allowed_endpoints(harness)
 
     configmap_data = mocked_access_rules_configmap.patch.call_args_list[0][1]
     container_allow_rules = configmap_data["patch"]["data"]
@@ -561,7 +559,7 @@ def test_deny_access_rules_rendering_when_single_protected_url_provided(
     harness.set_can_connect(CONTAINER_NAME, True)
     setup_peer_relation(harness)
 
-    relation_id, app_name = setup_auth_proxy_relation(harness)
+    _, app_name = setup_auth_proxy_relation(harness)
 
     expected_deny_rules = [
         {
@@ -638,7 +636,7 @@ def test_all_endpoints_protected_when_no_allowed_endpoints_provided(
     harness.set_can_connect(CONTAINER_NAME, True)
     setup_peer_relation(harness)
 
-    relation_id, app_name = setup_auth_proxy_relation_without_allowed_endpoints(harness)
+    _, app_name = setup_auth_proxy_relation_without_allowed_endpoints(harness)
 
     expected_deny_rules = [
         {
@@ -708,8 +706,8 @@ def test_access_rules_pop_from_configmap_on_auth_proxy_config_removed(
     mocked_access_rules_configmap: MagicMock,
 ) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
-    peer_relation_id, _ = setup_peer_relation(harness)
-    relation_id, app_name = setup_auth_proxy_relation(harness)
+    setup_peer_relation(harness)
+    relation_id, _ = setup_auth_proxy_relation(harness)
     harness.charm.access_rules_configmap.pop = mocked_handle = Mock(return_value=None)
 
     harness.remove_relation(relation_id)
@@ -725,12 +723,10 @@ def test_peer_data_when_multiple_auth_proxy_relations(
     harness.set_can_connect(CONTAINER_NAME, True)
     peer_relation_id, _ = setup_peer_relation(harness)
 
-    requirer_relation_id, requirer_app_name = setup_auth_proxy_relation(harness)
+    requirer_relation_id, _ = setup_auth_proxy_relation(harness)
     requirer_auth_proxy_peer_id = f"auth_proxy_{requirer_relation_id}"
 
-    other_requirer_relation_id, other_requirer_app_name = setup_auth_proxy_relation(
-        harness, app_name="other-requirer"
-    )
+    other_requirer_relation_id, _ = setup_auth_proxy_relation(harness, app_name="other-requirer")
     other_requirer_auth_proxy_peer_id = f"auth_proxy_{other_requirer_relation_id}"
 
     requirer_peer_data = '{"access_rules_filenames": ["access-rules-requirer-allow.json", "access-rules-requirer-deny.json"]}'
@@ -757,7 +753,7 @@ def test_certificates_relation_databag(
     harness: Harness, mocked_oathkeeper_is_running: MagicMock
 ) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
-    peer_relation_id, _ = setup_peer_relation(harness)
+    setup_peer_relation(harness)
     relation_id = setup_certificates_relation(harness)
 
     unit_databag = harness.get_relation_data(relation_id, harness.charm.unit.name)
@@ -770,8 +766,8 @@ def test_certificates_creation_requested(
     mocked_request_certificate_creation: MagicMock,
 ) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
-    peer_relation_id, _ = setup_peer_relation(harness)
-    _ = setup_certificates_relation(harness)
+    setup_peer_relation(harness)
+    setup_certificates_relation(harness)
 
     assert harness.charm._sans_dns == f"{SERVICE_NAME}.{harness.model.name}.svc.cluster.local"
     mocked_request_certificate_creation.assert_called()
@@ -783,8 +779,8 @@ def test_forward_auth_config_updated_on_tls_set_up(
     mocked_update_forward_auth: MagicMock,
 ) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
-    peer_relation_id, _ = setup_peer_relation(harness)
-    _ = setup_certificates_relation(harness)
+    setup_peer_relation(harness)
+    setup_certificates_relation(harness)
 
     harness.charm.cert_handler.on.cert_changed.emit()
 
@@ -794,7 +790,7 @@ def test_forward_auth_config_updated_on_tls_set_up(
 def test_oathkeeper_info_ready_event_emitted_when_relation_created(harness: Harness) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
     with capture_events(harness.charm) as captured:
-        _ = setup_oathkeeper_info_relation(harness)
+        setup_oathkeeper_info_relation(harness)
 
     assert any(isinstance(e, OathkeeperInfoRelationCreatedEvent) for e in captured)
 
@@ -802,7 +798,7 @@ def test_oathkeeper_info_ready_event_emitted_when_relation_created(harness: Harn
 def test_oathkeeper_info_updated_on_relation_ready(harness: Harness) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
     harness.charm.info_provider.send_info_relation_data = mocked_handle = Mock(return_value=None)
-    _ = setup_oathkeeper_info_relation(harness)
+    setup_oathkeeper_info_relation(harness)
 
     mocked_handle.assert_called_with(
         public_endpoint="http://oathkeeper.testing.svc.cluster.local:4456",
@@ -818,7 +814,7 @@ def test_config_file_includes_oathkeeper_info_requirer_rules(
 ) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
     harness.charm.on.oathkeeper_pebble_ready.emit(CONTAINER_NAME)
-    _ = setup_oathkeeper_info_relation(harness)
+    setup_oathkeeper_info_relation(harness)
 
     with open("templates/oathkeeper.yaml.j2", "r") as file:
         template = Template(file.read())

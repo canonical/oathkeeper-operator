@@ -3,7 +3,6 @@
 
 """A helper class for interacting with the Oathkeeper CLI."""
 
-
 import json
 import logging
 from typing import Dict, List, Tuple, Union

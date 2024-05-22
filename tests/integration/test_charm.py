@@ -105,9 +105,9 @@ async def test_auth_proxy_relation(ops_test: OpsTest, copy_libraries_into_tester
 @pytest.mark.abort_on_fail
 async def test_forward_auth_relation(ops_test: OpsTest) -> None:
     """Ensure that oathkeeper is able to provide forward-auth relation."""
-    await ops_test.model.applications[TRAEFIK].set_config(
-        {"enable_experimental_forward_auth": "True"}
-    )
+    await ops_test.model.applications[TRAEFIK].set_config({
+        "enable_experimental_forward_auth": "True"
+    })
     await ops_test.model.integrate(f"{TRAEFIK}:experimental-forward-auth", APP_NAME)
 
     await ops_test.model.wait_for_idle([TRAEFIK, APP_NAME], status="active", timeout=1000)

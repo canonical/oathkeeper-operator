@@ -186,19 +186,15 @@ class OathkeeperCharm(CharmBase):
         # Oathkeeper may restart before the config.yaml file is reloaded,
         # resulting in the app not taking tls into account.
         # Hot reload of config is not supported for tls changes.
-        if all(
-            [
-                self.cert_handler.cert,
-                self.cert_handler.key,
-                self.cert_handler.ca,
-            ]
-        ):
-            extra_env.update(
-                {
-                    "SERVE_API_TLS_CERT_BASE64": b64encode(bytes(self.cert_handler.cert, "utf-8")),
-                    "SERVE_API_TLS_KEY_BASE64": b64encode(bytes(self.cert_handler.key, "utf-8")),
-                }
-            )
+        if all([
+            self.cert_handler.cert,
+            self.cert_handler.key,
+            self.cert_handler.ca,
+        ]):
+            extra_env.update({
+                "SERVE_API_TLS_CERT_BASE64": b64encode(bytes(self.cert_handler.cert, "utf-8")),
+                "SERVE_API_TLS_KEY_BASE64": b64encode(bytes(self.cert_handler.key, "utf-8")),
+            })
 
             domain = f"https://{self._sans_dns}"
 
@@ -291,13 +287,11 @@ class OathkeeperCharm(CharmBase):
         conf = self._render_conf_file()
         self.oathkeeper_configmap.update({"oathkeeper.yaml": conf})
 
-        if all(
-            [
-                self.cert_handler.cert,
-                self.cert_handler.key,
-                self.cert_handler.ca,
-            ]
-        ):
+        if all([
+            self.cert_handler.cert,
+            self.cert_handler.key,
+            self.cert_handler.ca,
+        ]):
             self.update_cert_configuration(
                 self.cert_handler.cert, self.cert_handler.key, self.cert_handler.ca
             )
@@ -603,7 +597,7 @@ class OathkeeperCharm(CharmBase):
                 access_rules_filenames.append(cm_name)
 
         self._set_auth_proxy_relation_peer_data(
-            event.relation_id, dict(access_rules_filenames=access_rules_filenames)
+            event.relation_id, {"access_rules_filenames": access_rules_filenames}
         )
 
         try:
