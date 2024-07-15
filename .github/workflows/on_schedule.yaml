@@ -1,3 +1,4 @@
+name: On Schedule
 on:
   schedule:
     - cron: '0 8 * * MON'
