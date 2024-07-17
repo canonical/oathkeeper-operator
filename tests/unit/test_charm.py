@@ -23,6 +23,7 @@ SERVICE_NAME = "oathkeeper"
 
 def setup_ingress_relation(harness: Harness) -> Tuple[int, str]:
     """Set up ingress relation."""
+    harness.add_network("10.0.0.1")
     relation_id = harness.add_relation("ingress", "traefik")
     harness.add_relation_unit(relation_id, "traefik/0")
     url = f"http://ingress:80/{harness.model.name}-oathkeeper"
@@ -154,9 +155,7 @@ def test_ingress_relation_created(harness: Harness) -> None:
         "model": json.dumps(harness.model.name),
         "name": json.dumps("oathkeeper"),
         "port": json.dumps(4456),
-        "scheme": json.dumps("http"),
         "strip-prefix": json.dumps(True),
-        "redirect-https": json.dumps(False),
     }
 
 
