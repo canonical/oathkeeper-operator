@@ -1,6 +1,8 @@
+-r requirements.txt
+coverage[toml]
+ipdb
+jsonschema
+pydantic
 pytest
 pytest-mock
-coverage[toml]
 requests
-ipdb
--r requirements.txt
