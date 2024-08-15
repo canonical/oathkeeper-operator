@@ -94,8 +94,7 @@ parts:
     charm-binary-python-packages:
       - jsonschema
       - cryptography
+      - pydantic
     build-packages:
       - libffi-dev
       - libssl-dev
-      - rustc
-      - cargo

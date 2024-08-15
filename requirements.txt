@@ -1,8 +1,6 @@
 cryptography
-ops>=2.0.0
+jinja2
 lightkube
 lightkube-models
-jinja2
-jsonschema
-pydantic<2.0
+ops>=2.0.0
 tenacity==8.2.2
