@@ -1,4 +1,4 @@
-protobuf~=3.20.1
+protobuf~=5.27.3
 pytest
 juju==3.3.0.0
 pytest-operator==0.35.0

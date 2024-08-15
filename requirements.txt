@@ -3,4 +3,4 @@ jinja2
 lightkube
 lightkube-models
 ops>=2.0.0
-tenacity==8.2.2
+tenacity==9.0.0
