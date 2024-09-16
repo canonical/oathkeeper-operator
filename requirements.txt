@@ -1,3 +1,4 @@
+cosl>=0.0.26
 cryptography
 jinja2
 lightkube

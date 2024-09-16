@@ -8,6 +8,10 @@ serve:
       enabled: true
       allowed_origins:
         - "*"
+  prometheus:
+    port: 9000
+    metrics_path: /metrics/prometheus
+    metric_name_prefix: oathkeeper_
 
 errors:
   fallback:
