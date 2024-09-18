@@ -84,6 +84,28 @@ Refer
 to [this](https://charmhub.io/topics/canonical-identity-platform/tutorials/e2e-tutorial)
 tutorial to learn how to deploy and configure the Identity Platform.
 
+### Observability
+
+The Oathkeeper Operator integrates
+with [Canonical Observability Stack (COS)](https://charmhub.io/topics/canonical-observability-stack) bundle.
+It comes with a Grafana dashboard and Loki and Prometheus alert rules for basic
+common scenarios. To integrate with the COS bundle, after
+you [deploy it](https://charmhub.io/topics/canonical-observability-stack/tutorials/install-microk8s#heading--deploy-the-cos-lite-bundle),
+you can run:
+
+```shell
+juju integrate oathkeeper:grafana-dashboard grafana:grafana-dashboard
+juju integrate oathkeeper:metrics-endpoint prometheus:metrics-endpoint
+juju integrate loki:logging oathkeeper:logging
+```
+
+To integrate with `tracing`, additionally run:
+
+```shell
+juju deploy tempo-k8s
+juju integrate oathkeeper:tracing tempo-k8s:tracing
+```
+
 ## Actions
 
 Oathkeeper charmed operator offers the following juju actions:

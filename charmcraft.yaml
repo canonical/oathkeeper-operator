@@ -38,6 +38,14 @@ provides:
     interface: oathkeeper_info
     description: |
       Provides oathkeeper deployment info to a related application
+  metrics-endpoint:
+    interface: prometheus_scrape
+    description: |
+      Provides application metrics to COS Prometheus instance
+  grafana-dashboard:
+    description: |
+      Forwards the built-in grafana dashboard(s) for monitoring oathkeeper
+    interface: grafana_dashboard
 
 requires:
   kratos-info:
@@ -50,6 +58,14 @@ requires:
     limit: 1
     description: |
       Send a CSR to- and obtain a signed certificate from an external CA.
+  logging:
+    interface: loki_push_api
+    limit: 1
+  tracing:
+    interface: tracing
+    limit: 1
+    description: |
+      Provides traces to COS Tempo instance
 
 peers:
   oathkeeper:

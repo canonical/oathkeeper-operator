@@ -12,8 +12,11 @@ import os
 import subprocess
 from base64 import b64encode
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
+from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.kratos.v0.kratos_info import KratosInfoRelationDataMissingError, KratosInfoRequirer
+from charms.loki_k8s.v1.loki_push_api import LogForwarder
 from charms.oathkeeper.v0.auth_proxy import (
     AuthProxyConfigChangedEvent,
     AuthProxyConfigRemovedEvent,
@@ -32,6 +35,8 @@ from charms.oathkeeper.v0.oathkeeper_info import (
 )
 from charms.observability_libs.v0.cert_handler import CertChanged, CertHandler
 from charms.observability_libs.v0.kubernetes_service_patch import KubernetesServicePatch
+from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
+from charms.tempo_k8s.v2.tracing import TracingEndpointRequirer
 from charms.traefik_k8s.v2.ingress import (
     IngressPerAppReadyEvent,
     IngressPerAppRequirer,
@@ -66,12 +71,18 @@ from tenacity import before_log, retry, stop_after_attempt, wait_exponential
 import config_map
 from config_map import AccessRulesConfigMap, OathkeeperConfigMap
 from constants import (
+    GRAFANA_DASHBOARD_RELATION_NAME,
+    LOKI_PUSH_API_RELATION_NAME,
     OATHKEEPER_API_PORT,
+    OATHKEEPER_METRICS_PORT,
     PEER,
+    PROMETHEUS_METRICS_PATH,
+    PROMETHEUS_SCRAPE_RELATION_NAME,
     SERVER_CA_CERT_PATH,
     SERVER_CERT_PATH,
     SERVER_KEY_PATH,
     SSL_PATH,
+    TRACING_RELATION_NAME,
 )
 from oathkeeper_cli import OathkeeperCLI
 
@@ -115,8 +126,35 @@ class OathkeeperCharm(CharmBase):
         )
         self.info_provider = OathkeeperInfoProvider(self)
 
+        self.metrics_endpoint = MetricsEndpointProvider(
+            self,
+            relation_name=PROMETHEUS_SCRAPE_RELATION_NAME,
+            jobs=[
+                {
+                    "metrics_path": PROMETHEUS_METRICS_PATH,
+                    "static_configs": [
+                        {
+                            "targets": [f"*:{OATHKEEPER_METRICS_PORT}"],
+                        }
+                    ],
+                }
+            ],
+        )
+
+        self._loki_log_forwarder = LogForwarder(self, relation_name=LOKI_PUSH_API_RELATION_NAME)
+
+        self.tracing = TracingEndpointRequirer(
+            self,
+            relation_name=TRACING_RELATION_NAME,
+            protocols=["otlp_http"],
+        )
+
+        self._grafana_dashboards = GrafanaDashboardProvider(
+            self, relation_name=GRAFANA_DASHBOARD_RELATION_NAME
+        )
+
         self._service_patcher = KubernetesServicePatch(
-            self, [("oathkeeper-api", OATHKEEPER_API_PORT)]
+            self, [("oathkeeper-api", OATHKEEPER_API_PORT), ("metrics-port", OATHKEEPER_METRICS_PORT)]
         )
 
         self._kratos_info = KratosInfoRequirer(self, relation_name=self._kratos_relation_name)
@@ -177,6 +215,9 @@ class OathkeeperCharm(CharmBase):
         self.framework.observe(self._ingress.on.ready, self._on_ingress_ready)
         self.framework.observe(self._ingress.on.revoked, self._on_ingress_revoked)
 
+        self.framework.observe(self.tracing.on.endpoint_changed, self._on_config_changed)
+        self.framework.observe(self.tracing.on.endpoint_removed, self._on_config_changed)
+
     @property
     def _oathkeeper_layer(self) -> Layer:
         """Returns a pre-configured Pebble layer."""
@@ -197,6 +238,15 @@ class OathkeeperCharm(CharmBase):
             })
 
             domain = f"https://{self._sans_dns}"
+
+        if self._tracing_ready:
+            extra_env.update({
+                "TRACING_ENABLED": True,
+                "TRACING_PROVIDER": "otel",
+                "TRACING_PROVIDERS_OTLP_SERVER_URL": self._get_tracing_endpoint_info(),
+                "TRACING_PROVIDERS_OTLP_INSECURE": True,
+                "TRACING_PROVIDERS_OTLP_SAMPLING_SAMPLING_RATIO": 1,
+            })
 
         layer_config = {
             "summary": "oathkeeper-operator layer",
@@ -251,6 +301,17 @@ class OathkeeperCharm(CharmBase):
             app_names=self.auth_proxy.get_app_names(),
             headers=self.auth_proxy.get_headers(),
         )
+
+    @property
+    def _tracing_ready(self) -> bool:
+        return self.tracing.is_ready()
+
+    def _get_tracing_endpoint_info(self) -> str:
+        if not self._tracing_ready:
+            return ""
+
+        http_endpoint = urlparse(self.tracing.get_endpoint("otlp_http"))
+        return http_endpoint.geturl().replace(f"{http_endpoint.scheme}://", "", 1) or ""
 
     def _is_tls_ready(self) -> bool:
         """Returns True if the workload is ready to operate in TLS mode."""

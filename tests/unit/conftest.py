@@ -134,3 +134,8 @@ def mocked_auth_proxy_headers(mocker: MockerFixture) -> MagicMock:
         return_value=["X-Name", "X-Email"],
     )
     return mocked_auth_proxy_headers
+
+
+@pytest.fixture()
+def mocked_tracing_ready(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("charm.OathkeeperCharm._tracing_ready", return_value=True)

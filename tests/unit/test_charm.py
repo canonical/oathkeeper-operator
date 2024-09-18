@@ -128,6 +128,51 @@ def setup_auth_proxy_relation_without_allowed_endpoints(harness: Harness) -> Tup
     return relation_id, app_name
 
 
+def setup_loki_relation(harness: Harness) -> int:
+    relation_id = harness.add_relation("logging", "loki-k8s")
+    harness.add_relation_unit(relation_id, "loki-k8s/0")
+    databag = {
+        "promtail_binary_zip_url": json.dumps({
+            "amd64": {
+                "filename": "promtail-static-amd64",
+                "zipsha": "543e333b0184e14015a42c3c9e9e66d2464aaa66eca48b29e185a6a18f67ab6d",
+                "binsha": "17e2e271e65f793a9fbe81eab887b941e9d680abe82d5a0602888c50f5e0cac9",
+                "url": "https://github.com/canonical/loki-k8s-operator/releases/download/promtail-v2.5.0/promtail-static-amd64.gz",
+            }
+        }),
+    }
+    unit_databag = {
+        "endpoint": json.dumps({
+            "url": "http://loki-k8s-0.loki-k8s-endpoints.model0.svc.cluster.local:3100/loki/api/v1/push"
+        })
+    }
+    harness.update_relation_data(
+        relation_id,
+        "loki-k8s/0",
+        unit_databag,
+    )
+    harness.update_relation_data(
+        relation_id,
+        "loki-k8s",
+        databag,
+    )
+    return relation_id
+
+
+def setup_tempo_relation(harness: Harness) -> int:
+    relation_id = harness.add_relation("tracing", "tempo-k8s")
+    harness.add_relation_unit(relation_id, "tempo-k8s/0")
+    trace_databag = {
+        "receivers": '[{"protocol": {"name": "otlp_http", "type":"http"},"url":"http://tempo-k8s-0.tempo-k8s-endpoints.namespace.svc.cluster.local:4318"}]',
+    }
+    harness.update_relation_data(
+        relation_id,
+        "tempo-k8s",
+        trace_databag,
+    )
+    return relation_id
+
+
 def test_pebble_container_can_connect(harness: Harness) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
     harness.charm.on.oathkeeper_pebble_ready.emit(CONTAINER_NAME)
@@ -828,3 +873,29 @@ def test_config_file_includes_oathkeeper_info_requirer_rules(
     container_config = configmap["oathkeeper.yaml"]
 
     assert yaml.safe_load(container_config) == yaml.safe_load(expected_config)
+
+
+def test_layer_updated_with_tracing_endpoint_info(harness: Harness, mocked_tracing_ready: MagicMock) -> None:
+    harness.set_can_connect(CONTAINER_NAME, True)
+    setup_tempo_relation(harness)
+    harness.charm.on.oathkeeper_pebble_ready.emit(CONTAINER_NAME)
+
+    pebble_env = harness.get_container_pebble_plan(CONTAINER_NAME).to_dict()["services"][SERVICE_NAME]["environment"]
+
+    assert pebble_env["TRACING_ENABLED"]
+    assert (
+        pebble_env["TRACING_PROVIDERS_OTLP_SERVER_URL"]
+        == "tempo-k8s-0.tempo-k8s-endpoints.namespace.svc.cluster.local:4318"
+    )
+    assert pebble_env["TRACING_PROVIDERS_OTLP_INSECURE"]
+    assert pebble_env["TRACING_PROVIDERS_OTLP_SAMPLING_SAMPLING_RATIO"] == 1
+    assert pebble_env["TRACING_PROVIDER"] == "otel"
+
+
+def test_on_pebble_ready_with_loki_integration(harness: Harness) -> None:
+    harness.set_can_connect(CONTAINER_NAME, True)
+    container = harness.model.unit.get_container(CONTAINER_NAME)
+    harness.charm.on.oathkeeper_pebble_ready.emit(container)
+    setup_loki_relation(harness)
+
+    assert harness.model.unit.status == ActiveStatus()

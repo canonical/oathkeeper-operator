@@ -1,0 +1,11 @@
+# The Oathkeeper charm may restart the workload on config-changed event.
+# Changing the config soon after deployment (e.g. setting dev flag) would cause another restart.
+# Using 5 as the alert threshold to take into account restart and immediate config changes.
+alert: OathkeeperProcessTooManyRestarts
+expr: changes(process_start_time_seconds[15m]) > 5
+for: 0m
+labels:
+  severity: warning
+annotations:
+  summary: Oathkeeper process too many restarts (instance {{ $labels.instance }})
+  description: "An oathkeeper process had too many restarts (target {{ $labels.instance }})\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
