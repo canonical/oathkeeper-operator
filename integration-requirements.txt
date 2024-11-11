@@ -1,5 +1,5 @@
 protobuf~=5.28.0
 pytest
-juju==3.5.2.0
+juju==3.5.2.1
 pytest-operator==0.38.0
 -r requirements.txt
