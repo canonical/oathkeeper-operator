@@ -97,13 +97,9 @@ actions:
         type: string
     required: ["rule-id"]
 
-bases:
-  - build-on:
-      - name: "ubuntu"
-        channel: "22.04"
-    run-on:
-      - name: "ubuntu"
-        channel: "22.04"
+base: ubuntu@22.04
+platforms:
+  amd64:
 
 parts:
   charm:
