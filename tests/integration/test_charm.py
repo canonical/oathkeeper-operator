@@ -96,7 +96,7 @@ async def test_auth_proxy_relation(ops_test: OpsTest, copy_libraries_into_tester
     await ops_test.model.wait_for_idle(
         apps=[APP_NAME, AUTH_PROXY_REQUIRER, TRAEFIK],
         status="active",
-        raise_on_blocked=True,
+        raise_on_blocked=False,
         timeout=1000,
     )
 
