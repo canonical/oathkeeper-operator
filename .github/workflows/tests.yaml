@@ -64,3 +64,8 @@ jobs:
           print(f.read())
           '"
         if: failure()
+
+      # Debug traefik
+      - name: Get k8s services
+        run: kubectl get svc -n testing
+        if: failure()
