@@ -631,6 +631,15 @@ class OathkeeperCharm(CharmBase):
         # The proxy was removed, but the charm is still functional
         self.unit.status = ActiveStatus()
 
+    @retry(
+        wait=wait_exponential(multiplier=3, min=1, max=10),
+        stop=stop_after_attempt(5),
+        reraise=True,
+        before=before_log(logger, logging.DEBUG),
+    )
+    def _patch_access_rules(self, patch: Dict) -> None:
+        self.access_rules_configmap.patch(patch=patch, cm_name="access-rules")
+
     def _on_auth_proxy_config_changed(self, event: AuthProxyConfigChangedEvent) -> None:
         if not self._oathkeeper_service_is_running:
             self.unit.status = WaitingStatus("Waiting for Oathkeeper service")
@@ -654,7 +663,7 @@ class OathkeeperCharm(CharmBase):
             if rules:
                 cm_name = f"access-rules-{event.relation_app_name}-{rule_type}.json"
                 patch = {"data": {cm_name: str(rules)}}
-                self.access_rules_configmap.patch(patch=patch, cm_name="access-rules")
+                self._patch_access_rules(patch)
                 access_rules_filenames.append(cm_name)
 
         self._set_auth_proxy_relation_peer_data(
