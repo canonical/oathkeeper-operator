@@ -1,6 +1,6 @@
 protobuf~=6.30.0
 pytest
-juju==3.6.1.0
+juju==3.6.1.1
 pytest-operator==0.41.0
 # TODO: remove when https://github.com/gtsystem/lightkube/issues/78 is fixed
 httpx==0.28.1
