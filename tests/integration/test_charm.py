@@ -25,7 +25,9 @@ TRAEFIK = "traefik-k8s"
 AUTH_PROXY_REQUIRER = "auth-proxy-requirer"
 
 
-async def get_k8s_service_address(ops_test: OpsTest, service_name: str, lightkube_client: Client) -> Optional[str]:
+async def get_k8s_service_address(
+    ops_test: OpsTest, service_name: str, lightkube_client: Client
+) -> Optional[str]:
     """Get the address of a LoadBalancer Kubernetes service using kubectl."""
     try:
         result = lightkube_client.get(Service, name=service_name, namespace=ops_test.model.name)
@@ -117,13 +119,17 @@ async def test_forward_auth_relation(ops_test: OpsTest) -> None:
     stop=stop_after_attempt(20),
     reraise=True,
 )
-async def test_allowed_forward_auth_url_redirect(ops_test: OpsTest, lightkube_client: Client) -> None:
+async def test_allowed_forward_auth_url_redirect(
+    ops_test: OpsTest, lightkube_client: Client
+) -> None:
     """Test that a request hitting a protected application is forwarded by traefik to oathkeeper.
 
     An allowed request should be performed without authentication.
     Retry the request to ensure the access rules were populated by oathkeeper.
     """
-    requirer_url = await get_reverse_proxy_app_url(ops_test, TRAEFIK, AUTH_PROXY_REQUIRER, lightkube_client)
+    requirer_url = await get_reverse_proxy_app_url(
+        ops_test, TRAEFIK, AUTH_PROXY_REQUIRER, lightkube_client
+    )
 
     protected_url = join(requirer_url, "anything/allowed")
 
@@ -131,13 +137,17 @@ async def test_allowed_forward_auth_url_redirect(ops_test: OpsTest, lightkube_cl
     assert resp.status_code == 200
 
 
-async def test_protected_forward_auth_url_redirect(ops_test: OpsTest, lightkube_client: Client) -> None:
+async def test_protected_forward_auth_url_redirect(
+    ops_test: OpsTest, lightkube_client: Client
+) -> None:
     """Test reaching a protected url.
 
     The request should be forwarded by traefik to oathkeeper.
     An unauthenticated request should then be denied with 401 Unauthorized response.
     """
-    requirer_url = await get_reverse_proxy_app_url(ops_test, TRAEFIK, AUTH_PROXY_REQUIRER, lightkube_client)
+    requirer_url = await get_reverse_proxy_app_url(
+        ops_test, TRAEFIK, AUTH_PROXY_REQUIRER, lightkube_client
+    )
 
     protected_url = join(requirer_url, "anything/deny")
 
@@ -149,7 +159,9 @@ async def test_forward_auth_url_response_headers(
     ops_test: OpsTest, lightkube_client: Client
 ) -> None:
     """Test that a response mutated by oathkeeper contains expected custom headers."""
-    requirer_url = await get_reverse_proxy_app_url(ops_test, TRAEFIK, AUTH_PROXY_REQUIRER, lightkube_client)
+    requirer_url = await get_reverse_proxy_app_url(
+        ops_test, TRAEFIK, AUTH_PROXY_REQUIRER, lightkube_client
+    )
     protected_url = join(requirer_url, "anything/anonymous")
 
     # Push an anonymous access rule as a workaround to avoid deploying identity-platform bundle
@@ -287,7 +299,7 @@ async def test_certificates_relation(ops_test: OpsTest) -> None:
     """Test the TLS certificates relation."""
     await ops_test.model.deploy(
         CA_CHARM,
-        channel="edge",
+        channel="latest/stable",
         trust=True,
     )
 
