@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1](https://github.com/canonical/oathkeeper-operator/compare/v1.0.0...v1.0.1) (2025-03-26)
+
+
+### Bug Fixes
+
+* fix the self-signed-certificates charm in integraiton test ([df204d4](https://github.com/canonical/oathkeeper-operator/commit/df204d4dff137bc40773ee81d2412643ad33b1c5))
+* provide optional flag in charmcraft.yaml ([e73ac81](https://github.com/canonical/oathkeeper-operator/commit/e73ac815c221b1a391244c2071c73d6197baefea))
+
 ## 1.0.0 (2025-03-10)
 
 
