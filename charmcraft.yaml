@@ -112,6 +112,7 @@ parts:
       - jsonschema
       - cryptography
       - pydantic
+      - "setuptools>=70.0.0"
     build-packages:
       - libffi-dev
       - libssl-dev
