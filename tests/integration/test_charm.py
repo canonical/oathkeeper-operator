@@ -50,14 +50,13 @@ async def get_reverse_proxy_app_url(
 
 @pytest.mark.skip_if_deployed
 @pytest.mark.abort_on_fail
-async def test_build_and_deploy(ops_test: OpsTest) -> None:
+async def test_build_and_deploy(ops_test: OpsTest, local_charm: Path) -> None:
     """Build and deploy oathkeeper."""
-    charm = await ops_test.build_charm(".")
     oathkeeper_image_path = METADATA["resources"]["oci-image"]["upstream-source"]
 
     await ops_test.model.deploy(
         application_name=APP_NAME,
-        entity_url=charm,
+        entity_url=str(local_charm),
         resources={"oci-image": oathkeeper_image_path},
         series="jammy",
         trust=True,
