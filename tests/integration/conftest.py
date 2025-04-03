@@ -3,8 +3,10 @@
 
 import os
 import shutil
+from pathlib import Path
 
 import pytest
+import pytest_asyncio
 from lightkube import Client, KubeConfig
 from pytest_operator.plugin import OpsTest
 
@@ -35,3 +37,13 @@ def copy_libraries_into_tester_charm() -> None:
         install_path = f"tests/integration/{AUTH_PROXY_REQUIRER}/lib/charms/{lib}"
         os.makedirs(os.path.dirname(install_path), exist_ok=True)
         shutil.copyfile(f"lib/charms/{lib}", install_path)
+
+
+@pytest_asyncio.fixture(scope="module")
+async def local_charm(ops_test: OpsTest) -> Path:
+    # in GitHub CI, charms are built with charmcraftcache and uploaded to $CHARM_PATH
+    charm = os.getenv("CHARM_PATH")
+    if not charm:
+        # fall back to build locally - required when run outside of GitHub CI
+        charm = await ops_test.build_charm(".")
+    return charm
