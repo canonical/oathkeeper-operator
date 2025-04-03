@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/canonical/oathkeeper-operator/compare/v1.0.1...v1.0.2) (2025-04-03)
+
+
+### Bug Fixes
+
+* address CVEs ([5329482](https://github.com/canonical/oathkeeper-operator/commit/5329482562abed6f961ed6f659e10f6118bd0da3)), closes [#166](https://github.com/canonical/oathkeeper-operator/issues/166)
+
 ## [1.0.1](https://github.com/canonical/oathkeeper-operator/compare/v1.0.0...v1.0.1) (2025-03-26)
 
 
