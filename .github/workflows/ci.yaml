@@ -21,6 +21,7 @@ jobs:
     name: CI
     uses: canonical/identity-team/.github/workflows/charm-pull-request.yaml@3bcf7c8d36b4e51e5a65d27041389d7456c17b57 # v1.8.0
     with:
-      container-name: "hydra"
+      container-name: "oathkeeper"
+      charm-config-path: "/etc/config/oathkeeper/oathkeeper.yaml"
       use-charmcraftcache: true
       node-size: large
