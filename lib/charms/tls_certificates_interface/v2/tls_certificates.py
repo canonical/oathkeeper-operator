@@ -282,10 +282,10 @@ from ipaddress import IPv4Address
 from typing import Any, Dict, List, Literal, Optional, Union
 
 from cryptography import x509
-from cryptography.hazmat._oid import ExtensionOID
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import pkcs12
+from cryptography.x509.oid import ExtensionOID
 from jsonschema import exceptions, validate
 from ops.charm import (
     CharmBase,
@@ -307,7 +307,7 @@ LIBAPI = 2
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 28
+LIBPATCH = 30
 
 PYDEPS = ["cryptography", "jsonschema"]
 
@@ -459,7 +459,7 @@ class CertificateAvailableEvent(EventBase):
 class CertificateExpiringEvent(EventBase):
     """Charm Event triggered when a TLS certificate is almost expired."""
 
-    def __init__(self, handle, certificate: str, expiry: str):
+    def __init__(self, handle: Handle, certificate: str, expiry: str):
         """CertificateExpiringEvent.
 
         Args:
