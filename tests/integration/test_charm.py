@@ -237,26 +237,20 @@ def update_config_configmap(ops_test: OpsTest, lightkube_client: Client) -> None
     )
 
 
-async def test_oathkeeper_scale_up(ops_test: OpsTest) -> None:
-    """Check that oathkeeper works after it is scaled up."""
+async def test_oathkeeper_scale_down_up_configmap_persistence(ops_test: OpsTest) -> None:
+    """Verify application recovery and scaling after a scale-to-zero event.
+
+    This test scales the application to 0 and then to 2 to ensure that global
+    resources (ConfigMaps) are not deleted when the app remains active but no units are running.
+    Successful recovery implicitly validates that the ConfigMaps persisted.
+    Otherwise, the new pod would fail to mount the configuration and never reach the active state.
+    """
     app = ops_test.model.applications[APP_NAME]
+
+    await app.scale(0)
+    await ops_test.model.block_until(lambda: len(app.units) == 0, timeout=300)
 
     await app.scale(2)
-
-    await ops_test.model.wait_for_idle(
-        apps=[APP_NAME],
-        status="active",
-        raise_on_blocked=True,
-        timeout=1000,
-        wait_for_active=True,
-    )
-
-
-async def test_oathkeeper_scale_down(ops_test: OpsTest) -> None:
-    """Check that oathkeeper works after it is scaled down."""
-    app = ops_test.model.applications[APP_NAME]
-
-    await app.scale(1)
 
     await ops_test.model.wait_for_idle(
         apps=[APP_NAME],
@@ -305,3 +299,18 @@ async def test_certificates_relation(ops_test: OpsTest) -> None:
     await ops_test.model.add_relation(CA_CHARM, f"{APP_NAME}:certificates")
 
     await ops_test.model.wait_for_idle([APP_NAME, CA_CHARM], status="active", timeout=1000)
+
+
+async def test_oathkeeper_scale_down(ops_test: OpsTest) -> None:
+    """Check that oathkeeper works after it is scaled down."""
+    app = ops_test.model.applications[APP_NAME]
+
+    await app.scale(1)
+
+    await ops_test.model.wait_for_idle(
+        apps=[APP_NAME],
+        status="active",
+        raise_on_blocked=True,
+        timeout=1000,
+        wait_for_active=True,
+    )
