@@ -53,7 +53,6 @@ from ops.charm import (
     InstallEvent,
     PebbleReadyEvent,
     RelationChangedEvent,
-    RemoveEvent,
     UpdateStatusEvent,
 )
 from ops.main import main
@@ -180,7 +179,6 @@ class OathkeeperCharm(CharmBase):
         self.framework.observe(self.on.install, self._on_install)
         self.framework.observe(self.on.config_changed, self._on_config_changed)
         self.framework.observe(self.on.update_status, self._on_update_status)
-        self.framework.observe(self.on.remove, self._on_remove)
 
         self.framework.observe(
             self.auth_proxy.on.proxy_config_changed, self._on_auth_proxy_config_changed
@@ -468,13 +466,6 @@ class OathkeeperCharm(CharmBase):
     def _on_update_status(self, event: UpdateStatusEvent) -> None:
         """Handle update-status event."""
         self._update_oathkeeper_info_relation_data(event)
-
-    def _on_remove(self, event: RemoveEvent) -> None:
-        """Handle remove event."""
-        if not self.unit.is_leader():
-            return
-
-        config_map.delete_all()
 
     def _on_kratos_relation_changed(self, event: RelationChangedEvent) -> None:
         self._handle_status_update_config(event)

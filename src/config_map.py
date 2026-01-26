@@ -7,7 +7,8 @@ import logging
 from typing import Dict, List
 
 from lightkube import ApiError, Client
-from lightkube.models.meta_v1 import ObjectMeta
+from lightkube.models.meta_v1 import ObjectMeta, OwnerReference
+from lightkube.resources.apps_v1 import StatefulSet
 from lightkube.resources.core_v1 import ConfigMap
 from ops.charm import CharmBase
 
@@ -59,6 +60,27 @@ class ConfigMapBase:
         except ApiError:
             pass
 
+        owner_refs = []
+        try:
+            # Fetch the StatefulSet to set as owner
+            sts = self._client.get(
+                StatefulSet,
+                name=self._charm.app.name,
+                namespace=self.namespace,
+            )
+            owner_refs = [
+                OwnerReference(
+                    apiVersion=sts.apiVersion,
+                    kind=sts.kind,
+                    name=sts.metadata.name,
+                    uid=sts.metadata.uid,
+                    blockOwnerDeletion=True,
+                    controller=True,
+                )
+            ]
+        except ApiError as e:
+            logger.warning(f"Could not get StatefulSet to set owner reference: {e}")
+
         cm = ConfigMap(
             apiVersion="v1",
             kind="ConfigMap",
@@ -69,6 +91,7 @@ class ConfigMapBase:
                     "juju-app-name": self._charm.app.name,
                     "app.kubernetes.io/managed-by": "juju",
                 },
+                ownerReferences=owner_refs,
             ),
         )
         self._client.create(cm)
