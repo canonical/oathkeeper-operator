@@ -220,7 +220,7 @@ class OathkeeperCharm(CharmBase):
 
     @property
     def _oathkeeper_layer(self) -> Layer:
-        """Returns a pre-configured Pebble layer."""
+        """Pre-configured Pebble layer."""
         extra_env = {}
         domain = "http://localhost"
         # We need to push the tls config as env vars due to k8s configmap latency.
@@ -380,7 +380,7 @@ class OathkeeperCharm(CharmBase):
 
     @property
     def _peers(self) -> Optional[Relation]:
-        """Fetch the peer relation."""
+        """The peer relation."""
         return self.model.get_relation(PEER)
 
     def _set_peer_data(self, key: str, data: Dict) -> None:
