@@ -1,6 +1,6 @@
 protobuf~=6.33.0
 # TODO: remove upper bound when https://github.com/charmed-kubernetes/pytest-operator/issues/158 is fixed
-pytest<9.2
+pytest<9.3
 juju==3.6.1.3
 pytest-operator==0.43.2
 # TODO: remove when https://github.com/gtsystem/lightkube/issues/78 is fixed
