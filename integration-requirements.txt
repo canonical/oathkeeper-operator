@@ -1,4 +1,4 @@
-protobuf~=6.33.0
+protobuf~=7.36.2
 # TODO: remove upper bound when https://github.com/charmed-kubernetes/pytest-operator/issues/158 is fixed
 pytest<9.2
 juju==3.6.1.3
