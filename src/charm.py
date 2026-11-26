@@ -154,7 +154,8 @@ class OathkeeperCharm(CharmBase):
         )
 
         self._service_patcher = KubernetesServicePatch(
-            self, [("oathkeeper-api", OATHKEEPER_API_PORT), ("metrics-port", OATHKEEPER_METRICS_PORT)]
+            self,
+            [("oathkeeper-api", OATHKEEPER_API_PORT), ("metrics-port", OATHKEEPER_METRICS_PORT)],
         )
 
         self._kratos_info = KratosInfoRequirer(self, relation_name=self._kratos_relation_name)

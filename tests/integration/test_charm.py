@@ -8,13 +8,15 @@ from os.path import join
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import jubilant
 import pytest
 import requests
 import yaml
 from lightkube import ApiError, Client
 from lightkube.resources.core_v1 import ConfigMap, Service
-from pytest_operator.plugin import OpsTest
 from tenacity import retry, stop_after_attempt, wait_exponential
+
+from tests.integration.conftest import all_active, and_, any_error, unit_number
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +27,12 @@ TRAEFIK = "traefik-k8s"
 AUTH_PROXY_REQUIRER = "auth-proxy-requirer"
 
 
-async def get_k8s_service_address(
-    ops_test: OpsTest, service_name: str, lightkube_client: Client
+def get_k8s_service_address(
+    juju: jubilant.Juju, service_name: str, lightkube_client: Client
 ) -> Optional[str]:
-    """Get the address of a LoadBalancer Kubernetes service using kubectl."""
+    """Get the address of a LoadBalancer Kubernetes service using lightkube."""
     try:
-        result = lightkube_client.get(Service, name=service_name, namespace=ops_test.model.name)
+        result = lightkube_client.get(Service, name=service_name, namespace=juju.model)
         ip_address = result.status.loadBalancer.ingress[0].ip
         return ip_address
     except ApiError as e:
@@ -38,79 +40,74 @@ async def get_k8s_service_address(
         return None
 
 
-async def get_reverse_proxy_app_url(
-    ops_test: OpsTest, ingress_app_name: str, app_name: str, lightkube_client: Client
+def get_reverse_proxy_app_url(
+    juju: jubilant.Juju, ingress_app_name: str, app_name: str, lightkube_client: Client
 ) -> str:
     """Get the ingress address of an app."""
-    address = await get_k8s_service_address(ops_test, f"{ingress_app_name}-lb", lightkube_client)
-    proxy_app_url = f"http://{address}/{ops_test.model.name}-{app_name}/"
+    address = get_k8s_service_address(juju, f"{ingress_app_name}-lb", lightkube_client)
+    proxy_app_url = f"http://{address}/{juju.model}-{app_name}/"
     logger.debug(f"Retrieved address: {proxy_app_url}")
     return proxy_app_url
 
 
-@pytest.mark.skip_if_deployed
-@pytest.mark.abort_on_fail
-async def test_build_and_deploy(ops_test: OpsTest, local_charm: Path) -> None:
+@pytest.mark.setup
+def test_build_and_deploy(juju: jubilant.Juju, local_charm: Path) -> None:
     """Build and deploy oathkeeper."""
     oathkeeper_image_path = METADATA["resources"]["oci-image"]["upstream-source"]
 
-    await ops_test.model.deploy(
-        application_name=APP_NAME,
-        entity_url=str(local_charm),
+    juju.deploy(
+        charm=str(local_charm),
+        app=APP_NAME,
         resources={"oci-image": oathkeeper_image_path},
-        series="jammy",
+        base="ubuntu@22.04",
         trust=True,
     )
 
-    await ops_test.model.wait_for_idle(
-        raise_on_blocked=False,
-        raise_on_error=False,
-        status="active",
+    juju.wait(
+        ready=all_active(APP_NAME),
+        error=any_error(APP_NAME),
         timeout=1000,
     )
-    assert ops_test.model.applications[APP_NAME].units[0].workload_status == "active"
 
 
-@pytest.mark.abort_on_fail
-async def test_auth_proxy_relation(ops_test: OpsTest, copy_libraries_into_tester_charm) -> None:
+@pytest.mark.setup
+def test_auth_proxy_relation(juju: jubilant.Juju, requirer_charm: Path) -> None:
     """Ensure that oathkeeper is able to provide auth-proxy relation."""
-    requirer_charm_path = Path(f"tests/integration/{AUTH_PROXY_REQUIRER}").absolute()
-    requirer_charm = await ops_test.build_charm(requirer_charm_path, verbosity="debug")
-
-    await ops_test.model.deploy(
+    juju.deploy(
         TRAEFIK,
         channel="latest/edge",
         trust=True,
     )
 
-    await ops_test.model.deploy(
-        application_name=AUTH_PROXY_REQUIRER,
-        entity_url=requirer_charm,
+    juju.deploy(
+        charm=str(requirer_charm),
+        app=AUTH_PROXY_REQUIRER,
         resources={"oci-image": "kennethreitz/httpbin"},
-        series="jammy",
+        base="ubuntu@22.04",
         trust=True,
     )
 
-    await ops_test.model.integrate(f"{AUTH_PROXY_REQUIRER}:ingress", TRAEFIK)
-    await ops_test.model.integrate(f"{AUTH_PROXY_REQUIRER}:auth-proxy", APP_NAME)
+    juju.integrate(f"{AUTH_PROXY_REQUIRER}:ingress", TRAEFIK)
+    juju.integrate(f"{AUTH_PROXY_REQUIRER}:auth-proxy", APP_NAME)
 
-    await ops_test.model.wait_for_idle(
-        apps=[APP_NAME, AUTH_PROXY_REQUIRER, TRAEFIK],
-        status="active",
-        raise_on_blocked=False,
+    juju.wait(
+        ready=all_active(APP_NAME, AUTH_PROXY_REQUIRER, TRAEFIK),
+        error=any_error(APP_NAME, AUTH_PROXY_REQUIRER, TRAEFIK),
         timeout=1000,
     )
 
 
-@pytest.mark.abort_on_fail
-async def test_forward_auth_relation(ops_test: OpsTest) -> None:
+@pytest.mark.setup
+def test_forward_auth_relation(juju: jubilant.Juju) -> None:
     """Ensure that oathkeeper is able to provide forward-auth relation."""
-    await ops_test.model.applications[TRAEFIK].set_config({
-        "enable_experimental_forward_auth": "True"
-    })
-    await ops_test.model.integrate(f"{TRAEFIK}:experimental-forward-auth", APP_NAME)
+    juju.config(TRAEFIK, {"enable_experimental_forward_auth": "True"})
+    juju.integrate(f"{TRAEFIK}:experimental-forward-auth", APP_NAME)
 
-    await ops_test.model.wait_for_idle([TRAEFIK, APP_NAME], status="active", timeout=1000)
+    juju.wait(
+        ready=all_active(TRAEFIK, APP_NAME),
+        error=any_error(TRAEFIK, APP_NAME),
+        timeout=1000,
+    )
 
 
 @retry(
@@ -118,17 +115,13 @@ async def test_forward_auth_relation(ops_test: OpsTest) -> None:
     stop=stop_after_attempt(20),
     reraise=True,
 )
-async def test_allowed_forward_auth_url_redirect(
-    ops_test: OpsTest, lightkube_client: Client
-) -> None:
+def test_allowed_forward_auth_url_redirect(juju: jubilant.Juju, lightkube_client: Client) -> None:
     """Test that a request hitting a protected application is forwarded by traefik to oathkeeper.
 
     An allowed request should be performed without authentication.
     Retry the request to ensure the access rules were populated by oathkeeper.
     """
-    requirer_url = await get_reverse_proxy_app_url(
-        ops_test, TRAEFIK, AUTH_PROXY_REQUIRER, lightkube_client
-    )
+    requirer_url = get_reverse_proxy_app_url(juju, TRAEFIK, AUTH_PROXY_REQUIRER, lightkube_client)
 
     protected_url = join(requirer_url, "anything/allowed")
 
@@ -136,17 +129,15 @@ async def test_allowed_forward_auth_url_redirect(
     assert resp.status_code == 200
 
 
-async def test_protected_forward_auth_url_redirect(
-    ops_test: OpsTest, lightkube_client: Client
+def test_protected_forward_auth_url_redirect(
+    juju: jubilant.Juju, lightkube_client: Client
 ) -> None:
     """Test reaching a protected url.
 
     The request should be forwarded by traefik to oathkeeper.
     An unauthenticated request should then be denied with 401 Unauthorized response.
     """
-    requirer_url = await get_reverse_proxy_app_url(
-        ops_test, TRAEFIK, AUTH_PROXY_REQUIRER, lightkube_client
-    )
+    requirer_url = get_reverse_proxy_app_url(juju, TRAEFIK, AUTH_PROXY_REQUIRER, lightkube_client)
 
     protected_url = join(requirer_url, "anything/deny")
 
@@ -154,13 +145,9 @@ async def test_protected_forward_auth_url_redirect(
     assert resp.status_code == 401
 
 
-async def test_forward_auth_url_response_headers(
-    ops_test: OpsTest, lightkube_client: Client
-) -> None:
+def test_forward_auth_url_response_headers(juju: jubilant.Juju, lightkube_client: Client) -> None:
     """Test that a response mutated by oathkeeper contains expected custom headers."""
-    requirer_url = await get_reverse_proxy_app_url(
-        ops_test, TRAEFIK, AUTH_PROXY_REQUIRER, lightkube_client
-    )
+    requirer_url = get_reverse_proxy_app_url(juju, TRAEFIK, AUTH_PROXY_REQUIRER, lightkube_client)
     protected_url = join(requirer_url, "anything/anonymous")
 
     # Push an anonymous access rule as a workaround to avoid deploying identity-platform bundle
@@ -178,8 +165,8 @@ async def test_forward_auth_url_response_headers(
         }
     ]
 
-    update_access_rules_configmap(ops_test, lightkube_client, rule=anonymous_rule)
-    update_config_configmap(ops_test, lightkube_client)
+    update_access_rules_configmap(juju, lightkube_client, rule=anonymous_rule)
+    update_config_configmap(juju, lightkube_client)
 
     assert_anonymous_response(protected_url)
 
@@ -203,14 +190,14 @@ def assert_anonymous_response(url: str) -> None:
     reraise=True,
 )
 def update_access_rules_configmap(
-    ops_test: OpsTest, lightkube_client: Client, rule: List[Dict]
+    juju: jubilant.Juju, lightkube_client: Client, rule: List[Dict]
 ) -> None:
     """Modify the ConfigMap to force access rules update.
 
     This is a workaround to test response headers without deploying identity-platform bundle.
     The anonymous authenticator is used only for testing purposes.
     """
-    cm = lightkube_client.get(ConfigMap, "access-rules", namespace=ops_test.model.name)
+    cm = lightkube_client.get(ConfigMap, "access-rules", namespace=juju.model)
     data = {"access-rules-iap-requirer-anonymous.json": str(rule)}
     cm.data = data
     lightkube_client.replace(cm)
@@ -221,87 +208,82 @@ def update_access_rules_configmap(
     stop=stop_after_attempt(5),
     reraise=True,
 )
-def update_config_configmap(ops_test: OpsTest, lightkube_client: Client) -> None:
+def update_config_configmap(juju: jubilant.Juju, lightkube_client: Client) -> None:
     """Modify the ConfigMap to force config file update.
 
     This is required to include the custom anonymous rule.
     """
-    cm = lightkube_client.get(ConfigMap, name="oathkeeper-config", namespace=ops_test.model.name)
-    cm = yaml.safe_load(cm.data["oathkeeper.yaml"])
-    cm["access_rules"]["repositories"] = [
+    cm = lightkube_client.get(ConfigMap, name="oathkeeper-config", namespace=juju.model)
+    config = yaml.safe_load(cm.data["oathkeeper.yaml"])
+    config["access_rules"]["repositories"] = [
         "file://etc/config/access-rules/access-rules-iap-requirer-anonymous.json"
     ]
-    patch = {"data": {"oathkeeper.yaml": yaml.dump(cm)}}
-    lightkube_client.patch(
-        ConfigMap, name="oathkeeper-config", namespace=ops_test.model.name, obj=patch
-    )
+    patch = {"data": {"oathkeeper.yaml": yaml.dump(config)}}
+    lightkube_client.patch(ConfigMap, name="oathkeeper-config", namespace=juju.model, obj=patch)
 
 
-async def test_oathkeeper_scale_up(ops_test: OpsTest) -> None:
+def test_oathkeeper_scale_up(juju: jubilant.Juju) -> None:
     """Check that oathkeeper works after it is scaled up."""
-    app = ops_test.model.applications[APP_NAME]
+    juju.cli("scale-application", APP_NAME, "2")
 
-    await app.scale(2)
-
-    await ops_test.model.wait_for_idle(
-        apps=[APP_NAME],
-        status="active",
-        raise_on_blocked=True,
+    juju.wait(
+        ready=and_(all_active(APP_NAME), unit_number(APP_NAME, 2)),
+        error=any_error(APP_NAME),
         timeout=1000,
-        wait_for_active=True,
     )
 
 
-async def test_oathkeeper_scale_down(ops_test: OpsTest) -> None:
+def test_oathkeeper_scale_down(juju: jubilant.Juju) -> None:
     """Check that oathkeeper works after it is scaled down."""
-    app = ops_test.model.applications[APP_NAME]
+    juju.cli("scale-application", APP_NAME, "1")
 
-    await app.scale(1)
-
-    await ops_test.model.wait_for_idle(
-        apps=[APP_NAME],
-        status="active",
-        raise_on_blocked=True,
+    juju.wait(
+        ready=and_(all_active(APP_NAME), unit_number(APP_NAME, 1)),
+        error=any_error(APP_NAME),
         timeout=1000,
-        wait_for_active=True,
     )
 
 
-async def test_remove_forward_auth_integration(ops_test: OpsTest) -> None:
+def test_remove_forward_auth_integration(juju: jubilant.Juju) -> None:
     """Ensure that the forward-auth relation doesn't cause errors on removal."""
-    await ops_test.juju("remove-relation", APP_NAME, f"{TRAEFIK}:experimental-forward-auth")
+    juju.remove_relation(APP_NAME, f"{TRAEFIK}:experimental-forward-auth")
 
-    await ops_test.model.wait_for_idle([TRAEFIK, APP_NAME], status="active")
-
-
-async def test_remove_auth_proxy_integration(ops_test: OpsTest) -> None:
-    """Ensure that the auth-proxy relation doesn't cause errors on removal."""
-    await ops_test.juju("remove-relation", APP_NAME, f"{AUTH_PROXY_REQUIRER}:auth-proxy")
-
-    await ops_test.model.wait_for_idle([APP_NAME, AUTH_PROXY_REQUIRER], status="active")
-
-
-async def test_list_rules(ops_test: OpsTest) -> None:
-    action = (
-        await ops_test.model.applications[APP_NAME]
-        .units[0]
-        .run_action(
-            "list-rules",
-        )
+    juju.wait(
+        ready=all_active(TRAEFIK, APP_NAME),
+        error=any_error(TRAEFIK, APP_NAME),
+        timeout=1000,
     )
-    res = (await action.wait()).results
-
-    assert len(res) > 0
 
 
-async def test_certificates_relation(ops_test: OpsTest) -> None:
+def test_remove_auth_proxy_integration(juju: jubilant.Juju) -> None:
+    """Ensure that the auth-proxy relation doesn't cause errors on removal."""
+    juju.remove_relation(APP_NAME, f"{AUTH_PROXY_REQUIRER}:auth-proxy")
+
+    juju.wait(
+        ready=all_active(APP_NAME, AUTH_PROXY_REQUIRER),
+        error=any_error(APP_NAME, AUTH_PROXY_REQUIRER),
+        timeout=1000,
+    )
+
+
+def test_list_rules(juju: jubilant.Juju) -> None:
+    task = juju.run(f"{APP_NAME}/0", "list-rules")
+
+    assert len(task.results) > 0
+
+
+def test_certificates_relation(juju: jubilant.Juju) -> None:
     """Test the TLS certificates relation."""
-    await ops_test.model.deploy(
+    juju.deploy(
         CA_CHARM,
         channel="latest/stable",
         trust=True,
     )
 
-    await ops_test.model.add_relation(CA_CHARM, f"{APP_NAME}:certificates")
+    juju.integrate(CA_CHARM, f"{APP_NAME}:certificates")
 
-    await ops_test.model.wait_for_idle([APP_NAME, CA_CHARM], status="active", timeout=1000)
+    juju.wait(
+        ready=all_active(APP_NAME, CA_CHARM),
+        error=any_error(APP_NAME, CA_CHARM),
+        timeout=1000,
+    )
