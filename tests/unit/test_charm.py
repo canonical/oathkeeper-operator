@@ -875,12 +875,16 @@ def test_config_file_includes_oathkeeper_info_requirer_rules(
     assert yaml.safe_load(container_config) == yaml.safe_load(expected_config)
 
 
-def test_layer_updated_with_tracing_endpoint_info(harness: Harness, mocked_tracing_ready: MagicMock) -> None:
+def test_layer_updated_with_tracing_endpoint_info(
+    harness: Harness, mocked_tracing_ready: MagicMock
+) -> None:
     harness.set_can_connect(CONTAINER_NAME, True)
     setup_tempo_relation(harness)
     harness.charm.on.oathkeeper_pebble_ready.emit(CONTAINER_NAME)
 
-    pebble_env = harness.get_container_pebble_plan(CONTAINER_NAME).to_dict()["services"][SERVICE_NAME]["environment"]
+    pebble_env = harness.get_container_pebble_plan(CONTAINER_NAME).to_dict()["services"][
+        SERVICE_NAME
+    ]["environment"]
 
     assert pebble_env["TRACING_ENABLED"]
     assert (
